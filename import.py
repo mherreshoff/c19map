@@ -12,34 +12,61 @@ url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_
 country_renames = {
     'Mainland China': 'China',
     'Bahamas, The': 'Bahamas',
+    'The Bahamas': 'Bahamas',
     'Gambia, The': 'Gambia',
+    'The Gambia': 'Gambia',
     'Czech Republic': 'Czechia',
     'Viet Nam': 'Vietnam',
     'Vatican City': 'Holy See',
     'Taiwan': 'Taiwan*',
     'East Timor': 'Timor-Leste',
+    'Iran (Islamic Republi of)': 'Iran',
+    'Republic of Ireland': 'Ireland',
+    'Republic of Korea': 'Korea, South',
+    'Republic of Moldova': 'Moldova',
+
 }
 
 canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_regions.csv', 'r'))][1:]
 
 us_states_rows = [r for r in csv.reader(open('data_us_states.csv', 'r'))]
 code_to_us_state = {r[0]: r[3] for r in us_states_rows[1:]}
+code_to_ca_province = {
+    'AB': 'Alberta', 'BC': 'British Columbia', 'MB': 'Manitoba',
+    'NB': 'New Brunswick', 'NL': 'Newfoundland and Labrador',
+    'NT': 'Northwest Territories', 'NS': 'Nova Scotia',
+    'NU': 'Nunavut', 'ON': 'Ontario', 'PE': 'Prince Edward Island',
+    'QC': 'Quebec', 'SK': 'Saskatchewan', 'YT': 'Yukon'}
 
 def canonicalize_place(p):
-    if (p[0], p[1]) in canonical_regions: return p
-        # If this region is canonical, we're done.
-    if (p[1], p[2]) in canonical_regions: return (p[1], p[2], '')
-        # E.g. If they accidentaly put Taiwan inside of China, we extract it.
-    for r in canonical_regions:
-        if r[1] == p[0]:
-            return (r[0], p[0], p[1])
-        # E.g. If we consider Greenland part of Denmark and they don't we put it back in.
+    if (p[0], p[1]) not in canonical_regions:
+        # If this region isn't canonical, let's try to canonicalize it.
+        if (p[1], p[2]) in canonical_regions: p = (p[1], p[2], '')
+            # E.g. If they accidentaly put Taiwan inside of China, and we don't, we extract it.
+        else:
+            for r in canonical_regions:
+                if r[1] == p[0]:
+                    p = (r[0], p[0], p[1])
+                    break
+                # E.g. If we consider Greenland part of Denmark and they don't we put it back in.
     if p[0] == "US":
+        # First handle province fields like "Hubolt, CA"
         a = p[1].split(',')
         if len(a) == 2:
             state = code_to_us_state.get(a[1].strip(), None)
             if state:
-                return (p[0], state, a[0].strip())
+                p = (p[0], state, a[0].strip())
+        # Remove the word 'County' from the county field.
+        words = p[2].split(' ')
+        if words[-1] == 'County':
+            p = (p[0], p[1], ' '.join(words[:-1]))
+    if p[0] == "CA":
+        # Handle state province fields like "Montreal, QC"
+        a = p[1].split(',')
+        if len(a) == 2:
+            province = code_to_ca_province.get(a[1].strip(), None)
+            if state:
+                p = (p[0], province, a[0].strip())
     return p
         # If all of those attempts fail, let it stand.
 
