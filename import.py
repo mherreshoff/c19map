@@ -94,10 +94,9 @@ def sanetize(s):
 places = set()
 latitude_by_place = {} 
 longitude_by_place = {} 
-default_value = 0
-confirmed_by_place = collections.defaultdict(lambda:[default_value]*day_count)
-deaths_by_place = collections.defaultdict(lambda:[default_value]*day_count)
-recovered_by_place = collections.defaultdict(lambda:[default_value]*day_count)
+confirmed_by_place = collections.defaultdict(lambda:[0]*day_count)
+deaths_by_place = collections.defaultdict(lambda:[0]*day_count)
+recovered_by_place = collections.defaultdict(lambda:[0]*day_count)
 
 def update(a, place, day, num):
     if num == '': return
@@ -151,10 +150,9 @@ recovered_out.writerow(headers)
 
 for place in sorted(places):
     country, province, district = place
-    if district:
-        division = province + " - " + district
-    else:
-        division = province
+    if district: division = province + " - " + district
+    else: division = province
+    if sum(confirmed_by_place[place]) == 0: continue  #Skip if no data.
 
     latitude = latitude_by_place.get(place, '')
     longitude = longitude_by_place.get(place, '')
