@@ -32,6 +32,10 @@ code_to_ca_province = {
 
 # Figures out what places should be named.
 def canonicalize_place(p):
+    # Our models aren't about ships, so we ignore them:
+    if 'Cruise Ship' in p[0] or 'Cruise Ship' in p[1]: return None
+    if 'Princess' in p[0] or 'Princess' in p[1]: return None
+
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
     if p in place_renames: p = place_renames[p]
@@ -128,6 +132,7 @@ for url, file_name, day in downloads:
 
         place = (country, province, district)
         place = canonicalize_place(place)
+        if place is None: continue
 
         if place not in places:
             places.add(place)
