@@ -9,6 +9,7 @@ start_date = datetime.date(2020, 1, 22)
 end_date = datetime.date(2020, 3, 23)
 url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
 
+# Import Data Files:
 country_renames_rows = [r for r in csv.reader(open('data_country_renames.csv', 'r'))]
 country_renames = {r[0]: r[1] for r in country_renames_rows[1:]}
 
@@ -23,6 +24,7 @@ code_to_ca_province = {
     'NU': 'Nunavut', 'ON': 'Ontario', 'PE': 'Prince Edward Island',
     'QC': 'Quebec', 'SK': 'Saskatchewan', 'YT': 'Yukon'}
 
+# Figures out what places should be named.
 def canonicalize_place(p):
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
@@ -44,7 +46,7 @@ def canonicalize_place(p):
             state = code_to_us_state.get(a[1].strip(), None)
             if state:
                 p = (p[0], state, a[0].strip())
-        # Remove the word 'County' from the county field.
+        # Remove the word 'County' from the district field.
         words = p[2].split(' ')
         if words[-1] == 'County':
             p = (p[0], p[1], ' '.join(words[:-1]))
@@ -99,14 +101,14 @@ for url, file_name, day in downloads:
 
         country = sanetize(first_of(keyed_row, ['Country_Region', 'Country/Region']))
         province = sanetize(first_of(keyed_row, ['Province_State', 'Province/State']))
-        county = sanetize(first_of(keyed_row, ['Admin2']) or '')
+        district = sanetize(first_of(keyed_row, ['Admin2']) or '')
         latitude = first_of(keyed_row, ['Lat', 'Latitude'])
         longitude = first_of(keyed_row, ['Long_', 'Longitude'])
         confirmed = first_of(keyed_row, ['Confirmed'])
         deaths = first_of(keyed_row, ['Deaths'])
         recovered = first_of(keyed_row, ['Recovered'])
 
-        place = (country, province, county)
+        place = (country, province, district)
         place = canonicalize_place(place)
 
         if place not in places:
@@ -131,13 +133,9 @@ deaths_out.writerow(headers)
 recovered_out.writerow(headers)
 
 for place in sorted(places):
-    country, province, county = place
-    if ',' in province: print(place)
-
-for place in sorted(places):
-    country, province, county = place
-    if county:
-        division = province + " - " + county
+    country, province, district = place
+    if district:
+        division = province + " - " + district
     else:
         division = province
 
