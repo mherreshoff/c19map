@@ -13,6 +13,10 @@ url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_
 country_renames_rows = [r for r in csv.reader(open('data_country_renames.csv', 'r'))]
 country_renames = {r[0]: r[1] for r in country_renames_rows[1:]}
 
+place_renames_rows = [r for r in csv.reader(open('data_place_renames.csv', 'r'))]
+place_renames = {
+        (r[0],r[1],r[2]): (r[3], r[4], r[5]) for r in place_renames_rows[1:]}
+
 canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_canonical_regions.csv', 'r'))][1:]
 
 us_states_rows = [r for r in csv.reader(open('data_us_states.csv', 'r'))]
@@ -28,6 +32,7 @@ code_to_ca_province = {
 def canonicalize_place(p):
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
+    if p in place_renames: p = place_renames[p]
 
     if (p[0], p[1]) not in canonical_regions:
         # If this region isn't canonical, let's try to canonicalize it.
@@ -58,8 +63,8 @@ def canonicalize_place(p):
             a[1] = a[1].strip()
             province = code_to_ca_province.get(a[1], a[1])
             p = (p[0], province, a[0])
+    if p in place_renames: p = place_renames[p]
     return p
-        # If all of those attempts fail, let it stand.
 
 
 
