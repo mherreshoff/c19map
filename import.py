@@ -5,6 +5,8 @@ import collections
 import urllib.request
 import os
 
+import numpy as np
+
 start_date = datetime.date(2020, 1, 22)
 end_date = datetime.date(2020, 3, 23)
 url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
@@ -94,9 +96,9 @@ def sanetize(s):
 places = set()
 latitude_by_place = {} 
 longitude_by_place = {} 
-confirmed_by_place = collections.defaultdict(lambda:[0]*day_count)
-deaths_by_place = collections.defaultdict(lambda:[0]*day_count)
-recovered_by_place = collections.defaultdict(lambda:[0]*day_count)
+confirmed_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
+deaths_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
+recovered_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
 
 def update(a, place, day, num):
     if num == '': return
@@ -137,6 +139,16 @@ for url, file_name, day in downloads:
         update(recovered_by_place, place, day, recovered)
 
 
+# Consolidate American county data into states:
+for p in places:
+    if p[0] == "US":
+        if p[2] == '': continue
+        state = (p[0], p[1], '')
+        confirmed_by_place[state] += confirmed_by_place[p]
+        deaths_by_place[state] += deaths_by_place[p]
+        recovered_by_place[state] += recovered_by_place[p]
+
+
 # Output the CSVs:
 confirmed_out = csv.writer(open("output_confirmed_data.csv", 'w'))
 deaths_out = csv.writer(open("output_deaths_data.csv", 'w'))
@@ -157,7 +169,7 @@ for place in sorted(places):
     latitude = latitude_by_place.get(place, '')
     longitude = longitude_by_place.get(place, '')
     row_start = [division, country, latitude, longitude]
-    confirmed_out.writerow(row_start + confirmed_by_place[place])
-    deaths_out.writerow(row_start + deaths_by_place[place])
-    recovered_out.writerow(row_start + recovered_by_place[place])
+    confirmed_out.writerow(row_start + list(confirmed_by_place[place]))
+    deaths_out.writerow(row_start + list(deaths_by_place[place]))
+    recovered_out.writerow(row_start + list(recovered_by_place[place]))
 
