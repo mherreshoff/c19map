@@ -7,7 +7,7 @@ The Gambia,Gambia
 Czech Republic,Czechia
 Viet Nam,Vietnam
 Vatican City,Holy See
-Taiwan,Taiwan*
+"Taiwan","Taiwan*"
 East Timor,Timor-Leste
 Iran (Islamic Republi of),Iran
 Republic of Ireland,Ireland
@@ -21,3 +21,4 @@ Ivory Coast,Cote d'Ivoire
 Fench Guiana,French Guiana
 Saint Martin,St Martin
 Russian Federation,Russia
+occupied Palestinian territory,Palestine

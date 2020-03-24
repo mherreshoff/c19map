@@ -44,6 +44,8 @@ def canonicalize_place(p):
                     p = (r[0], p[0], p[1])
                     break
                 # E.g. If we consider Greenland part of Denmark and they don't we put it back in.
+    if p[0] in country_renames:
+        p = (country_renames[p[0]], p[1], p[2])
     if p[0] == "US":
         # Handle province fields like "Hubolt, CA"
         a = p[1].split(',')
@@ -92,9 +94,19 @@ def sanetize(s):
 places = set()
 latitude_by_place = {} 
 longitude_by_place = {} 
-confirmed_by_place = collections.defaultdict(lambda:['']*day_count)
-deaths_by_place = collections.defaultdict(lambda:['']*day_count)
-recovered_by_place = collections.defaultdict(lambda:['']*day_count)
+default_value = 0
+confirmed_by_place = collections.defaultdict(lambda:[default_value]*day_count)
+deaths_by_place = collections.defaultdict(lambda:[default_value]*day_count)
+recovered_by_place = collections.defaultdict(lambda:[default_value]*day_count)
+
+def update(a, place, day, num):
+    if num == '': return
+    num = int(num)
+    if a[place][day] == '':
+        a[place][day] = num
+        return
+    a[place][day] = max(a[place][day], num)
+
 
 for url, file_name, day in downloads:
     if not os.path.exists(file_name):
@@ -121,9 +133,9 @@ for url, file_name, day in downloads:
         if latitude is not None and longitude is not None:
             latitude_by_place[place] = latitude
             longitude_by_place[place] = longitude
-        confirmed_by_place[place][day] = confirmed
-        deaths_by_place[place][day] = deaths
-        recovered_by_place[place][day] = recovered
+        update(confirmed_by_place, place, day, confirmed)
+        update(deaths_by_place, place, day, deaths)
+        update(recovered_by_place, place, day, recovered)
 
 
 # Output the CSVs:
@@ -146,7 +158,7 @@ for place in sorted(places):
 
     latitude = latitude_by_place.get(place, '')
     longitude = longitude_by_place.get(place, '')
-    row_start = [country, division, latitude, longitude]
+    row_start = [division, country, latitude, longitude]
     confirmed_out.writerow(row_start + confirmed_by_place[place])
     deaths_out.writerow(row_start + deaths_by_place[place])
     recovered_out.writerow(row_start + recovered_by_place[place])
