@@ -24,7 +24,7 @@ country_renames = {
     'Republic of Ireland': 'Ireland',
     'Republic of Korea': 'Korea, South',
     'Republic of Moldova': 'Moldova',
-
+    'UK': 'United Kingdom',
 }
 
 canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_regions.csv', 'r'))][1:]
@@ -39,10 +39,13 @@ code_to_ca_province = {
     'QC': 'Quebec', 'SK': 'Saskatchewan', 'YT': 'Yukon'}
 
 def canonicalize_place(p):
+    if p[0] in country_renames:
+        p = (country_renames[p[0]], p[1], p[2])
+
     if (p[0], p[1]) not in canonical_regions:
         # If this region isn't canonical, let's try to canonicalize it.
         if (p[1], p[2]) in canonical_regions: p = (p[1], p[2], '')
-            # E.g. If they accidentaly put Taiwan inside of China, and we don't, we extract it.
+            # E.g. If they put Taiwan inside of China, and we don't, we extract it.
         else:
             for r in canonical_regions:
                 if r[1] == p[0]:
@@ -50,7 +53,7 @@ def canonicalize_place(p):
                     break
                 # E.g. If we consider Greenland part of Denmark and they don't we put it back in.
     if p[0] == "US":
-        # First handle province fields like "Hubolt, CA"
+        # Handle province fields like "Hubolt, CA"
         a = p[1].split(',')
         if len(a) == 2:
             state = code_to_us_state.get(a[1].strip(), None)
@@ -60,13 +63,14 @@ def canonicalize_place(p):
         words = p[2].split(' ')
         if words[-1] == 'County':
             p = (p[0], p[1], ' '.join(words[:-1]))
-    if p[0] == "CA":
-        # Handle state province fields like "Montreal, QC"
+    if p[0] == "Canada":
+        # Handle province fields like "Montreal, QC"
         a = p[1].split(',')
         if len(a) == 2:
-            province = code_to_ca_province.get(a[1].strip(), None)
-            if state:
-                p = (p[0], province, a[0].strip())
+            a[0] = a[0].strip()
+            a[1] = a[1].strip()
+            province = code_to_ca_province.get(a[1], a[1])
+            p = (p[0], province, a[0])
     return p
         # If all of those attempts fail, let it stand.
 
@@ -117,9 +121,6 @@ for url, file_name, day in downloads:
         deaths = first_of(keyed_row, ['Deaths'])
         recovered = first_of(keyed_row, ['Recovered'])
 
-        if country in country_renames:
-            country = country_renames[country]
-
         place = (country, province, county)
         place = canonicalize_place(place)
 
@@ -154,8 +155,6 @@ for place in sorted(places):
         division = province + " - " + county
     else:
         division = province
-    if deaths_by_place[place][-1] == '':
-        print("D", place)
 
     latitude = latitude_by_place.get(place, '')
     longitude = longitude_by_place.get(place, '')
