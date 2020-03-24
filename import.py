@@ -9,25 +9,10 @@ start_date = datetime.date(2020, 1, 22)
 end_date = datetime.date(2020, 3, 23)
 url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
 
-country_renames = {
-    'Mainland China': 'China',
-    'Bahamas, The': 'Bahamas',
-    'The Bahamas': 'Bahamas',
-    'Gambia, The': 'Gambia',
-    'The Gambia': 'Gambia',
-    'Czech Republic': 'Czechia',
-    'Viet Nam': 'Vietnam',
-    'Vatican City': 'Holy See',
-    'Taiwan': 'Taiwan*',
-    'East Timor': 'Timor-Leste',
-    'Iran (Islamic Republi of)': 'Iran',
-    'Republic of Ireland': 'Ireland',
-    'Republic of Korea': 'Korea, South',
-    'Republic of Moldova': 'Moldova',
-    'UK': 'United Kingdom',
-}
+country_renames_rows = [r for r in csv.reader(open('data_country_renames.csv', 'r'))]
+country_renames = {r[0]: r[1] for r in country_renames_rows[1:]}
 
-canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_regions.csv', 'r'))][1:]
+canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_canonical_regions.csv', 'r'))][1:]
 
 us_states_rows = [r for r in csv.reader(open('data_us_states.csv', 'r'))]
 code_to_us_state = {r[0]: r[3] for r in us_states_rows[1:]}
