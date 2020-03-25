@@ -8,7 +8,7 @@ import os
 import numpy as np
 
 start_date = datetime.date(2020, 1, 22)
-end_date = datetime.date(2020, 3, 23)
+end_date = datetime.date(2020, 3, 24)
 url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
 
 # Import Data Files:
