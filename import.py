@@ -134,8 +134,7 @@ for url, file_name, day in downloads:
         place = canonicalize_place(place)
         if place is None: continue
 
-        if place not in places:
-            places.add(place)
+        if place not in places: places.add(place)
         if latitude is not None and longitude is not None:
             latitude_by_place[place] = latitude
             longitude_by_place[place] = longitude
@@ -152,6 +151,8 @@ for p in places:
         confirmed_by_place[state] += confirmed_by_place[p]
         deaths_by_place[state] += deaths_by_place[p]
         recovered_by_place[state] += recovered_by_place[p]
+
+places = set(p for p in places if p[2] == '')  # Remove counties/districts from output
 
 
 # Output the CSVs:
