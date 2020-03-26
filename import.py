@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 import argparse
+import collections
 import csv
 import datetime
-import collections
-import urllib.request
-import os
-
 import numpy as np
+import os
+import urllib.request
 
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
 parser.add_argument("-s", "--start", default="2020-01-22")
 parser.add_argument("-e", "--end", default="today")
+url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
+data_directory = 'JHU_data'
 args = parser.parse_args()
 
 start_date = datetime.date.fromisoformat(args.start)
@@ -20,7 +21,6 @@ if args.end == "today":
 else:
     end_date = datetime.date.fromisoformat(args.end)
 
-url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
 
 # Import Data Files:
 country_renames_rows = [r for r in csv.reader(open('data_country_renames.csv', 'r'))]
@@ -40,6 +40,25 @@ code_to_ca_province = {
     'NT': 'Northwest Territories', 'NS': 'Nova Scotia',
     'NU': 'Nunavut', 'ON': 'Ontario', 'PE': 'Prince Edward Island',
     'QC': 'Quebec', 'SK': 'Saskatchewan', 'YT': 'Yukon'}
+
+# Download Johns Hopkins Data:
+downloads = []
+day_count = (end_date - start_date).days + 1;
+dates = []
+
+if not os.path.exists(data_directory): os.makedirs(data_directory)
+
+for n in range(day_count):
+    d = start_date + datetime.timedelta(n)
+    dates.append(d)
+    file_name = d.strftime('%m-%d-%Y.csv')
+    file_path = os.path.join(data_directory, file_name)
+    downloads.append([url_prefix + file_name, file_path, n])
+
+for url, file_path, day in downloads:
+    if not os.path.exists(file_path):
+        print("Downloading "+file_path+" url: "+url)
+        urllib.request.urlretrieve(url, file_path)
 
 # Figures out what places should be named.
 def canonicalize_place(p):
@@ -89,14 +108,6 @@ def canonicalize_place(p):
 
 
 
-downloads = []
-day_count = (end_date - start_date).days + 1;
-dates = []
-for n in range(day_count):
-    d = start_date + datetime.timedelta(n)
-    dates.append(d)
-    file_name = d.strftime('%m-%d-%Y.csv')
-    downloads.append([url_prefix + file_name, file_name, n])
 
 
 def first_of(d, ks):
@@ -120,16 +131,10 @@ recovered_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
 def update(a, place, day, num):
     if num == '': return
     num = int(num)
-    if a[place][day] == '':
-        a[place][day] = num
-        return
     a[place][day] = max(a[place][day], num)
 
 
 for url, file_name, day in downloads:
-    if not os.path.exists(file_name):
-        print("Downloading "+file_name+"...");
-        urllib.request.urlretrieve(url, file_name)
     rows = [row for row in csv.reader(open(file_name,encoding='utf-8-sig'))]
     for i in range(1, len(rows)):
         keyed_row = dict(zip(rows[0], rows[i]))
