@@ -153,6 +153,17 @@ for p in places:
 places = set(p for p in places if p[2] == '')
 
 
+# Sanity Checks:
+def is_nonmonotone(v):
+    for i in range(1, len(v)):
+        if v[i] < v[i-1]: return i
+    return None
+for p in sorted(places):
+    m = is_nonmonotone(confirmed_by_place[p])
+    if m is not None:
+        print("Non-monotone confirmed_by_place: ", p, "@ day", dates[m])
+
+
 # Output the CSVs:
 confirmed_out = csv.writer(open("timeseq_confirmed_data.csv", 'w'))
 deaths_out = csv.writer(open("timeseq_deaths_data.csv", 'w'))
