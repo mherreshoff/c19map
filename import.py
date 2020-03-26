@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import csv
 import datetime
 import collections
@@ -7,8 +8,18 @@ import os
 
 import numpy as np
 
-start_date = datetime.date(2020, 1, 22)
-end_date = datetime.date(2020, 3, 24)
+
+parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
+parser.add_argument("-s", "--start", default="2020-01-22")
+parser.add_argument("-e", "--end", default="today")
+args = parser.parse_args()
+
+start_date = datetime.date.fromisoformat(args.start)
+if args.end == "today":
+    end_date = datetime.date.today()
+else:
+    end_date = datetime.date.fromisoformat(args.end)
+
 url_prefix = 'https://raw.githack.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/'
 
 # Import Data Files:
