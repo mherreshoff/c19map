@@ -33,6 +33,8 @@ place_renames = {
         (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
 canonical_regions = [(r[0], r[1]) for r in csv_as_matrix('data_canonical_regions.csv')]
 
+throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
+
 # Download Johns Hopkins Data:
 downloads = []
 day_count = (end_date - start_date).days + 1;
@@ -55,17 +57,14 @@ for url, file_path, day in downloads:
 # Figures out what places should be named.
 def canonicalize_place(p):
     # Our models aren't about ships, so we ignore them:
-    if 'Cruise Ship' in p[0] or 'Cruise Ship' in p[1]: return None
-    if 'Princess' in p[0] or 'Princess' in p[1]: return None
-    if p == ('US', 'US', ''): return None
-    if p == ('Australia', '', ''): return None
+    s = ';'.join(p)
+    if 'Cruise Ship' in s or 'Princess' in s: return None
+    if p in throw_away_places: return None
 
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
     if p in place_renames: p = place_renames[p]
 
-    if p[0] in country_renames:
-        p = (country_renames[p[0]], p[1], p[2])
     if p[0] == "US":
         # Handle province fields like "Hubolt, CA"
         a = p[1].split(',')
@@ -152,7 +151,8 @@ for p in places:
         deaths_by_place[state] += deaths_by_place[p]
         recovered_by_place[state] += recovered_by_place[p]
 
-places = set(p for p in places if p[2] == '')  # Remove counties/districts from output
+# Remove counties from output:
+places = set(p for p in places if p[2] == '')
 
 
 # Output the CSVs:
