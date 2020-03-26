@@ -21,25 +21,17 @@ if args.end == "today":
 else:
     end_date = datetime.date.fromisoformat(args.end)
 
+# Import data:
+def csv_as_matrix(path):
+    return [r for r in csv.reader(open(path, 'r'))][1:]
 
-# Import Data Files:
-country_renames_rows = [r for r in csv.reader(open('data_country_renames.csv', 'r'))]
-country_renames = {r[0]: r[1] for r in country_renames_rows[1:]}
+code_to_us_state = {r[0]: r[3] for r in csv_as_matrix('data_us_states.csv')}
+code_to_ca_province = {r[0]: r[1] for r in csv_as_matrix('data_ca_provinces.csv')}
 
-place_renames_rows = [r for r in csv.reader(open('data_place_renames.csv', 'r'))]
+country_renames = {r[0]: r[1] for r in csv_as_matrix('data_country_renames.csv')}
 place_renames = {
-        (r[0],r[1],r[2]): (r[3], r[4], r[5]) for r in place_renames_rows[1:]}
-
-canonical_regions = [(r[0], r[1]) for r in csv.reader(open('data_canonical_regions.csv', 'r'))][1:]
-
-us_states_rows = [r for r in csv.reader(open('data_us_states.csv', 'r'))]
-code_to_us_state = {r[0]: r[3] for r in us_states_rows[1:]}
-code_to_ca_province = {
-    'AB': 'Alberta', 'BC': 'British Columbia', 'MB': 'Manitoba',
-    'NB': 'New Brunswick', 'NL': 'Newfoundland and Labrador',
-    'NT': 'Northwest Territories', 'NS': 'Nova Scotia',
-    'NU': 'Nunavut', 'ON': 'Ontario', 'PE': 'Prince Edward Island',
-    'QC': 'Quebec', 'SK': 'Saskatchewan', 'YT': 'Yukon'}
+        (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
+canonical_regions = [(r[0], r[1]) for r in csv_as_matrix('data_canonical_regions.csv')]
 
 # Download Johns Hopkins Data:
 downloads = []
