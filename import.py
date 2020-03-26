@@ -174,9 +174,9 @@ places = set(p for p in places if p[2] == '')  # Remove counties/districts from 
 
 
 # Output the CSVs:
-confirmed_out = csv.writer(open("output_confirmed_data.csv", 'w'))
-deaths_out = csv.writer(open("output_deaths_data.csv", 'w'))
-recovered_out = csv.writer(open("output_recovered_data.csv", 'w'))
+confirmed_out = csv.writer(open("timeseq_confirmed_data.csv", 'w'))
+deaths_out = csv.writer(open("timeseq_deaths_data.csv", 'w'))
+recovered_out = csv.writer(open("timeseq_recovered_data.csv", 'w'))
 
 headers = ["Province/State","Country/Region","Lat","Long"]
 headers += ["%d/%d/%d" % (d.month, d.day, d.year%100) for d in dates]
