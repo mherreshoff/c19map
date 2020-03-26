@@ -7,6 +7,8 @@ import numpy as np
 import os
 import urllib.request
 
+from common import *
+
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
 parser.add_argument("-s", "--start", default="2020-01-22")
@@ -53,8 +55,16 @@ for url, file_path, day in downloads:
         print("Downloading "+file_path+" url: "+url)
         urllib.request.urlretrieve(url, file_path)
 
+
+def sanetize(s):
+    s = s.strip()
+    if s == "None": s = ''
+    return s
+
+
 # Figures out what places should be named.
 def canonicalize_place(p):
+    p = tuple(map(sanetize, p))
     # Our models aren't about ships, so we ignore them:
     s = ';'.join(p)
     if 'Cruise Ship' in s or 'Princess' in s: return None
@@ -93,75 +103,43 @@ def first_of(d, ks):
     return None
 
 
-def sanetize(s):
-    s = s.strip()
-    if s == "None": s = ''
-    return s
-
 
 # Read our JHU data, and reconsile it together:
-places = set()
-latitude_by_place = {} 
-longitude_by_place = {} 
-confirmed_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
-deaths_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
-recovered_by_place = collections.defaultdict(lambda:np.array([0]*day_count))
-
-def update(a, place, day, num):
-    if num == '': return
-    num = int(num)
-    a[place][day] = max(a[place][day], num)
-
+places = collections.defaultdict(lambda: TimeSeries(day_count))
 
 for url, file_name, day in downloads:
     rows = [row for row in csv.reader(open(file_name,encoding='utf-8-sig'))]
     for i in range(1, len(rows)):
         keyed_row = dict(zip(rows[0], rows[i]))
 
-        country = sanetize(first_of(keyed_row, ['Country_Region', 'Country/Region']))
-        province = sanetize(first_of(keyed_row, ['Province_State', 'Province/State']))
-        district = sanetize(first_of(keyed_row, ['Admin2']) or '')
+        country = first_of(keyed_row, ['Country_Region', 'Country/Region'])
+        province = first_of(keyed_row, ['Province_State', 'Province/State'])
+        district = first_of(keyed_row, ['Admin2']) or ''
         latitude = first_of(keyed_row, ['Lat', 'Latitude'])
         longitude = first_of(keyed_row, ['Long_', 'Longitude'])
         confirmed = first_of(keyed_row, ['Confirmed'])
         deaths = first_of(keyed_row, ['Deaths'])
         recovered = first_of(keyed_row, ['Recovered'])
 
-        place = (country, province, district)
-        place = canonicalize_place(place)
-        if place is None: continue
+        p = (country, province, district)
+        p = canonicalize_place(p)
+        if p is None: continue
 
-        if place not in places: places.add(place)
         if latitude is not None and longitude is not None:
-            latitude_by_place[place] = latitude
-            longitude_by_place[place] = longitude
-        update(confirmed_by_place, place, day, confirmed)
-        update(deaths_by_place, place, day, deaths)
-        update(recovered_by_place, place, day, recovered)
+            places[p].latitude = latitude
+            places[p].longitude = longitude
+        places[p].update('confirmed', day, confirmed)
+        places[p].update('deaths', day, deaths)
+        places[p].update('recovered', day, recovered)
 
 
-# Consolidate American county data into states:
-for p in places:
-    if p[0] == "US":
-        if p[2] == '': continue
+# Consolidate US county data into states:
+for p in sorted(places.keys()):
+    if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
-        confirmed_by_place[state] += confirmed_by_place[p]
-        deaths_by_place[state] += deaths_by_place[p]
-        recovered_by_place[state] += recovered_by_place[p]
-
-# Remove counties from output:
-places = set(p for p in places if p[2] == '')
-
-
-# Sanity Checks:
-def is_nonmonotone(v):
-    for i in range(1, len(v)):
-        if v[i] < v[i-1]: return i
-    return None
-for p in sorted(places):
-    m = is_nonmonotone(confirmed_by_place[p])
-    if m is not None:
-        print("Non-monotone confirmed_by_place: ", p, "@ day", dates[m])
+        places[state].confirmed += places[p].confirmed
+        places[state].deaths += places[p].deaths
+        places[state].recovered += places[p].recovered
 
 
 # Output the CSVs:
@@ -175,16 +153,15 @@ confirmed_out.writerow(headers)
 deaths_out.writerow(headers)
 recovered_out.writerow(headers)
 
-for place in sorted(places):
-    country, province, district = place
-    if district: division = province + " - " + district
-    else: division = province
-    if sum(confirmed_by_place[place]) == 0: continue  #Skip if no data.
+for p in sorted(places.keys()):
+    country, province, district = p
+    if district: continue
+    if sum(places[p].confirmed) == 0: continue  #Skip if no data.
 
-    latitude = latitude_by_place.get(place, '')
-    longitude = longitude_by_place.get(place, '')
-    row_start = [division, country, latitude, longitude]
-    confirmed_out.writerow(row_start + list(confirmed_by_place[place]))
-    deaths_out.writerow(row_start + list(deaths_by_place[place]))
-    recovered_out.writerow(row_start + list(recovered_by_place[place]))
+    latitude = places[p].latitude or ''
+    longitude = places[p].longitude or ''
+    row_start = [province, country, latitude, longitude]
+    confirmed_out.writerow(row_start + list(places[p].confirmed))
+    deaths_out.writerow(row_start + list(places[p].deaths))
+    recovered_out.writerow(row_start + list(places[p].recovered))
 
