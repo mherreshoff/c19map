@@ -1,2 +1,3 @@
 JHU_data/*.csv
-timeseq_*.csv
+time_series_*.csv
+*.pkl

@@ -5,6 +5,7 @@ import csv
 import datetime
 import numpy as np
 import os
+import pickle
 import urllib.request
 
 from common import *
@@ -105,7 +106,7 @@ def first_of(d, ks):
 
 
 # Read our JHU data, and reconsile it together:
-places = collections.defaultdict(lambda: TimeSeries(day_count))
+places = {}
 
 for url, file_name, day in downloads:
     rows = [row for row in csv.reader(open(file_name,encoding='utf-8-sig'))]
@@ -125,6 +126,8 @@ for url, file_name, day in downloads:
         p = canonicalize_place(p)
         if p is None: continue
 
+        if p not in places: places[p] = TimeSeries(day_count)
+
         if latitude is not None and longitude is not None:
             places[p].latitude = latitude
             places[p].longitude = longitude
@@ -137,15 +140,16 @@ for url, file_name, day in downloads:
 for p in sorted(places.keys()):
     if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
+        if state not in places: places[state] = TimeSeries(day_count)
         places[state].confirmed += places[p].confirmed
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered
 
 
 # Output the CSVs:
-confirmed_out = csv.writer(open("timeseq_confirmed_data.csv", 'w'))
-deaths_out = csv.writer(open("timeseq_deaths_data.csv", 'w'))
-recovered_out = csv.writer(open("timeseq_recovered_data.csv", 'w'))
+confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
+deaths_out = csv.writer(open("time_series_deaths.csv", 'w'))
+recovered_out = csv.writer(open("time_series_recovered.csv", 'w'))
 
 headers = ["Province/State","Country/Region","Lat","Long"]
 headers += ["%d/%d/%d" % (d.month, d.day, d.year%100) for d in dates]
@@ -165,3 +169,7 @@ for p in sorted(places.keys()):
     deaths_out.writerow(row_start + list(places[p].deaths))
     recovered_out.writerow(row_start + list(places[p].recovered))
 
+# Output places dictionary:
+timeseries_f = open('time_series.pkl', 'wb')
+pickle.dump(places, timeseries_f)
+timeseries_f.close()
