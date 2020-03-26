@@ -126,7 +126,7 @@ for url, file_name, day in downloads:
         p = canonicalize_place(p)
         if p is None: continue
 
-        if p not in places: places[p] = TimeSeries(day_count)
+        if p not in places: places[p] = TimeSeries(dates)
 
         if latitude is not None and longitude is not None:
             places[p].latitude = latitude
@@ -140,7 +140,7 @@ for url, file_name, day in downloads:
 for p in sorted(places.keys()):
     if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
-        if state not in places: places[state] = TimeSeries(day_count)
+        if state not in places: places[state] = TimeSeries(dates)
         places[state].confirmed += places[p].confirmed
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered
