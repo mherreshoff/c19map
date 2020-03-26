@@ -84,7 +84,6 @@ def canonicalize_place(p):
             a[1] = a[1].strip()
             province = code_to_ca_province.get(a[1], a[1])
             p = (p[0], province, a[0])
-    if p in place_renames: p = place_renames[p]
     return p
 
 
