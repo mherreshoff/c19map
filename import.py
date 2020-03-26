@@ -31,7 +31,6 @@ code_to_ca_province = {r[0]: r[1] for r in csv_as_matrix('data_ca_provinces.csv'
 country_renames = {r[0]: r[1] for r in csv_as_matrix('data_country_renames.csv')}
 place_renames = {
         (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
-canonical_regions = [(r[0], r[1]) for r in csv_as_matrix('data_canonical_regions.csv')]
 
 throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
