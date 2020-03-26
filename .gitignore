@@ -1,2 +1,2 @@
-*-2020.csv
-output_*.csv
+JHU_data/*.csv
+timeseq_*.csv
