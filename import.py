@@ -64,16 +64,6 @@ def canonicalize_place(p):
         p = (country_renames[p[0]], p[1], p[2])
     if p in place_renames: p = place_renames[p]
 
-    if (p[0], p[1]) not in canonical_regions:
-        # If this region isn't canonical, let's try to canonicalize it.
-        if (p[1], p[2]) in canonical_regions: p = (p[1], p[2], '')
-            # E.g. If they put Taiwan inside of China, and we don't, we extract it.
-        else:
-            for r in canonical_regions:
-                if r[1] == p[0]:
-                    p = (r[0], p[0], p[1])
-                    break
-                # E.g. If we consider Greenland part of Denmark and they don't we put it back in.
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
     if p[0] == "US":
@@ -99,20 +89,20 @@ def canonicalize_place(p):
     return p
 
 
-
-
-
 def first_of(d, ks):
     for k in ks:
         if k in d:
             return d[k]
     return None
 
+
 def sanetize(s):
     s = s.strip()
     if s == "None": s = ''
     return s
 
+
+# Read our JHU data, and reconsile it together:
 places = set()
 latitude_by_place = {} 
 longitude_by_place = {} 
