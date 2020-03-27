@@ -24,18 +24,7 @@ if args.end == "today":
 else:
     end_date = datetime.date.fromisoformat(args.end)
 
-# Import data:
-def csv_as_matrix(path):
-    return [r for r in csv.reader(open(path, 'r'))][1:]
 
-code_to_us_state = {r[0]: r[3] for r in csv_as_matrix('data_us_states.csv')}
-code_to_ca_province = {r[0]: r[1] for r in csv_as_matrix('data_ca_provinces.csv')}
-
-country_renames = {r[0]: r[1] for r in csv_as_matrix('data_country_renames.csv')}
-place_renames = {
-        (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
-
-throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
 # Download Johns Hopkins Data:
 downloads = []
@@ -55,47 +44,6 @@ for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print("Downloading "+file_path+" url: "+url)
         urllib.request.urlretrieve(url, file_path)
-
-
-def sanetize(s):
-    s = s.strip()
-    if s == "None": s = ''
-    return s
-
-
-# Figures out what places should be named.
-def canonicalize_place(p):
-    p = tuple(map(sanetize, p))
-    # Our models aren't about ships, so we ignore them:
-    s = ';'.join(p)
-    if 'Cruise Ship' in s or 'Princess' in s: return None
-    if p in throw_away_places: return None
-
-    if p[0] in country_renames:
-        p = (country_renames[p[0]], p[1], p[2])
-    if p in place_renames: p = place_renames[p]
-
-    if p[0] == "US":
-        # Handle province fields like "Hubolt, CA"
-        a = p[1].split(',')
-        if len(a) == 2:
-            state = code_to_us_state.get(a[1].strip(), None)
-            if state:
-                p = (p[0], state, a[0].strip())
-        # Remove the word 'County' from the district field.
-        words = p[2].split(' ')
-        if words[-1] == 'County':
-            p = (p[0], p[1], ' '.join(words[:-1]))
-    if p[0] == "Canada":
-        # Handle province fields like "Montreal, QC"
-        a = p[1].split(',')
-        if len(a) == 2:
-            a[0] = a[0].strip()
-            a[1] = a[1].strip()
-            province = code_to_ca_province.get(a[1], a[1])
-            p = (p[0], province, a[0])
-    return p
-
 
 def first_of(d, ks):
     for k in ks:
