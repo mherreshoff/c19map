@@ -1,4 +1,5 @@
 JHU_data/*.csv
 time_series_*.csv
 *.pkl
+*_estimated_*
 __pycache__/*
