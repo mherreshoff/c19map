@@ -12,7 +12,8 @@ from common import *
 
 parser = argparse.ArgumentParser(description='Plot death growth rates offset by intervention.')
 parser.add_argument("-i", "--intervention", default="Lockdown")
-parser.add_argument("-m", "--mindeaths", type=int, default=10)
+parser.add_argument("-m", "--mindeaths", type=int, default=100)
+parser.add_argument("-n", "--smoothing", type=int, default=3)
 args = parser.parse_args()
 
 # Load the data:
@@ -61,8 +62,9 @@ for k in sorted(intervention_date.keys()):
     for i in range(1, len(deaths)):
         if deaths[i] < deaths[i-1]: deaths[i] = deaths[i-1]
         # Force monotonicity.
-    xs = np.array([(d-iv_date).days for d in dates[:-1]])
-    ys = (deaths[1:] / deaths[:-1]) - 1
+    N = args.smoothing
+    xs = np.array([(d-iv_date).days for d in dates[:-N]])
+    ys = np.power(deaths[N:] / deaths[:-N], 1.0/N) - 1
     plots.append((place_str, xs,ys))
 
 all_vals = collections.defaultdict(list)
