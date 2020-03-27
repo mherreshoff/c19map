@@ -53,7 +53,7 @@ def first_of(d, ks):
 
 
 
-# Read our JHU data, and reconsile it together:
+# Read our JHU data, and reconcile it together:
 places = {}
 throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
