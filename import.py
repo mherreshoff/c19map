@@ -55,6 +55,7 @@ def first_of(d, ks):
 
 # Read our JHU data, and reconsile it together:
 places = {}
+throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
 for url, file_name, day in downloads:
     rows = [row for row in csv.reader(open(file_name,encoding='utf-8-sig'))]
@@ -71,6 +72,7 @@ for url, file_name, day in downloads:
         recovered = first_of(keyed_row, ['Recovered'])
 
         p = (country, province, district)
+        if p in throw_away_places: continue
         p = canonicalize_place(p)
         if p is None: continue
 

@@ -29,7 +29,7 @@ def csv_as_matrix(path):
 recon_data_loaded = False
 country_renames = None
 place_renames = None
-throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
+throw_away_places = set([('US', 'US', '')])
 code_to_us_state = False
 code_to_ca_province = False
 

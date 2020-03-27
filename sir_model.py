@@ -55,9 +55,6 @@ def SIR_deriv(y, t, N, beta, gamma):
 # Load the data:
 places = pickle.load(open('time_series.pkl', 'rb'))
 
-def csv_as_matrix(path):
-    return [r for r in csv.reader(open(path, 'r'))][1:]
-
 def parse_int(s):
     return int(s.replace(',', ''))
 
@@ -67,18 +64,20 @@ population = {(r[0], r[1], '') : parse_int(r[3])
 interventions = collections.defaultdict(list)
 
 for country, region, change, date, explanation in csv_as_matrix('data_interventions.csv'):
-    interventions[(country, region)].append((change, date))
+    p = canonicalize_place((country, region, ''))
+    if p is None: continue
+    interventions[p].append((change, date))
 
 def interventions_to_beta(raw_interventions, start_day):
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
     interventions = []
     for change, date_s in raw_interventions:
+        if date_s == '': continue
         try:
             date = dateutil.parser.parse(date_s).date()
         except Exception:
-            if date_s != '':
-                print("Non-parsing date (" + date_s + ")")
+            print("Non-parsing date (" + date_s + ")")
             continue
         t = (date-start_day).days
         if change in INTERVENTION_INFECTION_GROWTH_RATE:
@@ -123,8 +122,8 @@ for k in sorted(population.keys()):
     t = np.linspace(0, days_simulation, days_simulation)
 
     beta = interventions_to_beta(
-            interventions[(k[0], '')] +
-            interventions[(k[0], k[1])],
+            interventions[(k[0], '', '')] +
+            interventions[(k[0], k[1], '')],
             start_day)
 
     ret = odeint(SIR_deriv, y0, t, args=(N, beta, gamma))
