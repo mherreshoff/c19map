@@ -53,6 +53,13 @@ population = {(r[0], r[1], '') : parse_int(r[3])
         for r in csv_as_matrix('data_population.csv')}
 
 
+# Outputs:
+infected_w = csv.writer(open('sir_estimated_infected.csv', 'w'))
+infected_w.writerow(
+        ["Province/State", "Country/Region", "Lat", "Long",
+        "Estimated", "Region Population", "Estimated Per Capita"])
+
+
 # Start calculating:
 for k in sorted(population.keys()):
     if k not in places: continue
@@ -60,6 +67,7 @@ for k in sorted(population.keys()):
     ts = places[k]
     N = population[k]
     latest_date = ts.dates[-1]
+
     latest_deaths = ts.deaths[-1]
     start_day = latest_date - datetime.timedelta(DAYS_INFECTION_TO_DEATH)
     start_day_I = latest_deaths / AVERAGE_DEATH_RATE
@@ -76,5 +84,12 @@ for k in sorted(population.keys()):
     t = np.linspace(0, days_simulation, days_simulation)
     ret = odeint(SIR_deriv, y0, t, args=(N, beta, gamma))
     S, I, R = ret.T
-    infections_now = I[DAYS_INFECTION_TO_DEATH]
-    print(','.join(k),": ", infections_now)
+
+    estimated = I[DAYS_INFECTION_TO_DEATH]
+    row_start = [k[0], k[1], ts.latitude, ts.longitude]
+    if estimated > 1000:
+        infected_w.writerow(row_start +
+            [np.round(estimated, -3), N,
+            str(np.round((estimated/N)*100, 2)) + '%'])
+    else:
+        infected_w.writerow(row_start + ['', N, ''])
