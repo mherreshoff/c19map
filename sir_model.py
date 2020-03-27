@@ -28,15 +28,16 @@ DAYS_FORECAST = 60
 
 
 # Model parameters:
-default_beta = INFECTION_GROWTH_RATE
-  # The term which grows I in SIR is beta*(S/N)*I.
-  # When S ~ N (early days of an epidemic), this is just beta*I.
-  # So beta can just be the infection growth rate.
 
 gamma = 1/DAYS_INFECTION_TO_DEATH
   # If we're going to assume the illness takes DAYS_INFECTON_TO_DEATH
   # to run its course, the probability of someone recovering (or dying)
   # needs to be the reciprocal of the duration.
+
+default_beta = INFECTION_GROWTH_RATE + gamma
+  # The term which grows I in SIR is beta*(S/N)*I - gamma*I
+  # When S ~ N (early days of an epidemic), this is just (beta-gamma)*I.
+  # So beta-gamma is the infection growth rate.
 
 
 # The SIR Model:
@@ -81,7 +82,7 @@ def interventions_to_beta(raw_interventions, start_day):
             continue
         t = (date-start_day).days
         if change in INTERVENTION_INFECTION_GROWTH_RATE:
-            b = INTERVENTION_INFECTION_GROWTH_RATE[change]
+            b = INTERVENTION_INFECTION_GROWTH_RATE[change] + gamma
             interventions.append((t,b))
     interventions.sort()
     def beta(t):
@@ -105,12 +106,12 @@ for k in sorted(population.keys()):
     ts = places[k]
     N = population[k]
     latest_date = ts.dates[-1]
-
     latest_deaths = ts.deaths[-1]
+
     start_day = latest_date - datetime.timedelta(DAYS_INFECTION_TO_DEATH)
-    start_day_I = latest_deaths / AVERAGE_DEATH_RATE
     start_day_idx = ts.dates.index(start_day)
     start_day_deaths = ts.deaths[start_day_idx]
+    start_day_I = (latest_deaths - start_day_deaths) / AVERAGE_DEATH_RATE
     start_day_R = start_day_deaths / AVERAGE_DEATH_RATE
     start_day_S = population[k] - start_day_I - start_day_R
 
