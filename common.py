@@ -51,7 +51,6 @@ def canonicalize_place(p):
     # Our models aren't about ships, so we ignore them:
     s = ';'.join(p)
     if 'Cruise Ship' in s or 'Princess' in s: return None
-    if p in throw_away_places: return None
 
     if p[0] in country_renames:
         p = (country_renames[p[0]], p[1], p[2])
