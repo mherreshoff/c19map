@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import collections
 import csv
 import datetime
+import dateutil.parser
 import numpy as np
 import pickle
 from scipy.integrate import odeint
@@ -15,11 +17,18 @@ AVERAGE_DEATH_RATE = 0.01
   # What fraction of COVID19 cases result in death?
 INFECTION_GROWTH_RATE = 0.24
   # How fast does the infection grow if there are very few cases?
+  # Assumes no interventions.
+INTERVENTION_INFECTION_GROWTH_RATE = {
+        'Lockdown': 0.075,
+        '~Lockdown': 0.1375,
+        'Social distancing': 0.2}
+  # Same question when there are active interventions.
 DAYS_FORECAST = 60
   # How many days into the future do we simulate?
 
+
 # Model parameters:
-beta = INFECTION_GROWTH_RATE
+default_beta = INFECTION_GROWTH_RATE
   # The term which grows I in SIR is beta*(S/N)*I.
   # When S ~ N (early days of an epidemic), this is just beta*I.
   # So beta can just be the infection growth rate.
@@ -32,10 +41,12 @@ gamma = 1/DAYS_INFECTION_TO_DEATH
 
 # The SIR Model:
 # See: https://scipython.com/book/chapter-8-scipy/additional-examples/the-sir-epidemic-model/
+# Beta is now time-dependant so interventions can turn on and off.
 def SIR_deriv(y, t, N, beta, gamma):
     S, I, R = y
-    dSdt = -beta * S * I / N
-    dIdt = beta * S * I / N - gamma * I
+    beta_val = beta(t)
+    dSdt = -beta_val * S * I / N
+    dIdt = beta_val * S * I / N - gamma * I
     dRdt = gamma * I
     return dSdt, dIdt, dRdt
 
@@ -51,6 +62,33 @@ def parse_int(s):
 
 population = {(r[0], r[1], '') : parse_int(r[3])
         for r in csv_as_matrix('data_population.csv')}
+
+interventions = collections.defaultdict(list)
+
+for country, region, change, date, explanation in csv_as_matrix('data_interventions.csv'):
+    interventions[(country, region)].append((change, date))
+
+def interventions_to_beta(raw_interventions, start_day):
+    # Takes a list of interventions.
+    # Returns a function that computes beta from t.
+    interventions = []
+    for change, date_s in raw_interventions:
+        try:
+            date = dateutil.parser.parse(date_s).date()
+        except Exception:
+            if date_s != '':
+                print("Non-parsing date (" + date_s + ")")
+            continue
+        t = (date-start_day).days
+        if change in INTERVENTION_INFECTION_GROWTH_RATE:
+            b = INTERVENTION_INFECTION_GROWTH_RATE[change]
+            interventions.append((t,b))
+    interventions.sort()
+    def beta(t):
+        for iv_t, iv_b in interventions:
+            if t >= iv_t: return iv_b
+        return default_beta
+    return beta
 
 
 # Outputs:
@@ -82,6 +120,12 @@ for k in sorted(population.keys()):
 
     days_simulation = DAYS_INFECTION_TO_DEATH + DAYS_FORECAST
     t = np.linspace(0, days_simulation, days_simulation)
+
+    beta = interventions_to_beta(
+            interventions[(k[0], '')] +
+            interventions[(k[0], k[1])],
+            start_day)
+
     ret = odeint(SIR_deriv, y0, t, args=(N, beta, gamma))
     S, I, R = ret.T
 
