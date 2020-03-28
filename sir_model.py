@@ -34,7 +34,7 @@ gamma = 1/DAYS_INFECTION_TO_DEATH
   # to run its course, the probability of someone recovering (or dying)
   # needs to be the reciprocal of the duration.
 
-default_beta = INFECTION_GROWTH_RATE + gamma
+default_beta = np.log(1 + INFECTION_GROWTH_RATE) + gamma
   # The term which grows I in SIR is beta*(S/N)*I - gamma*I
   # When S ~ N (early days of an epidemic), this is just (beta-gamma)*I.
   # So beta-gamma is the infection growth rate.
@@ -81,7 +81,7 @@ def interventions_to_beta(raw_interventions, start_day):
             continue
         t = (date-start_day).days
         if change in INTERVENTION_INFECTION_GROWTH_RATE:
-            b = INTERVENTION_INFECTION_GROWTH_RATE[change] + gamma
+            b = np.log(1 + INTERVENTION_INFECTION_GROWTH_RATE[change]) + gamma
             interventions.append((t,b))
     interventions.sort()
     def beta(t):
