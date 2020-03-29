@@ -68,6 +68,7 @@ for country, region, change, date, explanation in csv_as_matrix('data_interventi
     if p is None: continue
     interventions[p].append((change, date))
 
+# TODO: switch to using 'Interventions' spreadsheet CSV when ready.
 def interventions_to_beta(raw_interventions, start_day):
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
