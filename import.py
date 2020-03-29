@@ -95,6 +95,16 @@ for p in sorted(places.keys()):
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered
 
+# Merge in French Polynesia:
+france = ('France', 'France', '')
+french_polynesia = ('France', 'French Polynesia', '')
+if french_polynesia in places:
+    places[france].confirmed += places[french_polynesia].confirmed
+    places[france].deaths += places[french_polynesia].deaths
+    places[france].recovered += places[french_polynesia].recovered
+    del places[french_polynesia]
+
+
 
 # Output the CSVs:
 confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
