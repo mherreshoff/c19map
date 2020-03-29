@@ -43,7 +43,7 @@ default_beta = np.log(1 + INFECTION_GROWTH_RATE) + gamma
 # The SIR Model:
 # See: https://scipython.com/book/chapter-8-scipy/additional-examples/the-sir-epidemic-model/
 # Beta is now time-dependant so interventions can turn on and off.
-def SIR_deriv(y, t, N, beta, gamma):
+def model_deriv(y, t, N, beta, gamma):
     S, I, R = y
     beta_val = beta(t)
     dSdt = -beta_val * S * I / N
@@ -92,7 +92,7 @@ def interventions_to_beta(raw_interventions, start_day):
 
 
 # Outputs:
-infected_w = csv.writer(open('sir_estimated_infected.csv', 'w'))
+infected_w = csv.writer(open('compartmental_estimated_infected.csv', 'w'))
 infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
@@ -126,7 +126,7 @@ for k in sorted(population.keys()):
             interventions[(k[0], k[1], '')],
             start_day)
 
-    ret = odeint(SIR_deriv, y0, t, args=(N, beta, gamma))
+    ret = odeint(model_deriv, y0, t, args=(N, beta, gamma))
     S, I, R = ret.T
 
     estimated = I[DAYS_INFECTION_TO_DEATH]
