@@ -200,8 +200,8 @@ infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
 
-validation_w = csv.writer(open('compartmental_validated.csv', 'w'))
-validation_w.writerow(
+comparison_w = csv.writer(open('compartmental_comparison.csv', 'w'))
+comparison_w.writerow(
         ["Province/State", "Country/Region", 
         "Deaths Predicted", "Deaths Actual"])
 
@@ -264,7 +264,7 @@ for k in sorted(population.keys()):
     # Latest deaths comparison:
     deaths_predicted = D[DAYS_INFECTION_TO_DEATH]
     deaths_actual = ts.deaths[-1]
-    validation_w.writerow([k[0], k[1], deaths_predicted, deaths_actual])
+    comparison_w.writerow([k[0], k[1], deaths_predicted, deaths_actual])
 
     # Graphs:
     fig = plt.figure(facecolor='w')
