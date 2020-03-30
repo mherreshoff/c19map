@@ -15,8 +15,8 @@ from common import *
 # ASSUMPTIONS:
 
 #TODO: these numbers are copied from neher.  Vet them more thoroughly.
-LATENT_PERIOD = 5
-INFECTIOUS_PERIOD = 3
+LATENT_PERIOD = 3.5
+INFECTIOUS_PERIOD = 4
 P_SEVERE = 0.10
 P_CRITICAL = 0.30
 P_FATAL = 0.35
@@ -24,7 +24,7 @@ HOSPITAL_DURATION = 4
 ICU_DURATION = 14
 
 
-DAYS_INFECTION_TO_DEATH = (LATENT_PERIOD + INFECTIOUS_PERIOD +
+DAYS_INFECTION_TO_DEATH = int(LATENT_PERIOD + INFECTIOUS_PERIOD +
         HOSPITAL_DURATION + ICU_DURATION)
   # On average, how long does a case of COVID19 last?
 
@@ -188,8 +188,8 @@ w, v = np.linalg.eig(m)
 max_eig_id = int(np.argmax(w))
 equilibrium_growth_rate = np.exp(w[max_eig_id])
 equilibrium_state = v[:,max_eig_id]
-equilibrium_state /= equilibrium_state[0:4] # Noralize by infection count.j
 equilibrium_state = np.concatenate([[0], equilibrium_state])  # Add back S row.
+equilibrium_state /= np.sum(equilibrium_state[1:5]) # Noralize by active cases.
 
 
 # Outputs:
@@ -197,6 +197,11 @@ infected_w = csv.writer(open('compartmental_estimated_infected.csv', 'w'))
 infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
+
+validation_w = csv.writer(open('compartmental_validated.csv', 'w'))
+validation_w.writerow(
+        ["Province/State", "Country/Region", 
+        "Deaths Predicted", "Deaths Actual"])
 
 
 # Start calculating:
@@ -211,17 +216,16 @@ for k in sorted(population.keys()):
 
     day0 = latest_date - datetime.timedelta(DAYS_INFECTION_TO_DEATH)
     day0_idx = ts.dates.index(day0)
-    day0_D  = ts.deaths[day0_idx]
+    day0_D = ts.deaths[day0_idx]
 
-    infected = (latest_D - day0_D) / 
-    y0 = day0_D * equilibrium_state
+    infected = (latest_D - day0_D) / AVERAGE_DEATH_RATE
+    y0 = equilibrium_state * infected
     y0[0] = N - np.sum(y0)
 
-    print("    ", infected, " <- Cohort infected prection.")
-    print("    ", np.sum(y0[1:3]), " <- Model steadystate prediction.")
-    day0_R = day0_D * (1 - 1 / AVERAGE_DEATH_RATE)
+    print("    ", day0_D, " <- Day 0 deaths.")
+    print("    ", y0[5], " <- Day 0 deaths, extrapolated")
 
-    days_simulation = DAYS_INFECTION_TO_DEATH + DAYS_FORECAST
+    days_simulation = DAYS_INFECTION_TO_DEATH + DAYS_FORECAST + 1
     t = np.linspace(0, days_simulation, days_simulation)
 
     beta = interventions_to_beta(
@@ -234,6 +238,7 @@ for k in sorted(population.keys()):
     S, E, I, H, C, D, R = ret.T
 
     estimated = I[DAYS_INFECTION_TO_DEATH]
+    deaths_predicted = I[DAYS_INFECTION_TO_DEATH]
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
     if estimated > 1000:
         infected_w.writerow(row_start +
@@ -241,3 +246,4 @@ for k in sorted(population.keys()):
             str(np.round((estimated/N)*100, 2)) + '%'])
     else:
         infected_w.writerow(row_start + ['', N, ''])
+    validation_w.writerow([k[0], k[1], deaths_predicted, latest_D])
