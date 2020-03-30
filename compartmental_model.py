@@ -3,7 +3,9 @@ import collections
 import csv
 import datetime
 import dateutil.parser
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pickle
 from scipy.integrate import odeint
 import sympy as sp
@@ -138,17 +140,13 @@ def parse_int(s):
 population = {(r[0], r[1], '') : parse_int(r[3])
         for r in csv_as_matrix('data_population.csv')}
 
-interventions = collections.defaultdict(list)
-
+interventions_by_place = collections.defaultdict(list)
 for country, region, change, date, explanation in csv_as_matrix('data_interventions.csv'):
     p = canonicalize_place((country, region, ''))
     if p is None: continue
-    interventions[p].append((change, date))
+    interventions_by_place[p].append((change, date))
 
-# TODO: switch to using 'Interventions' spreadsheet CSV when ready.
-def interventions_to_beta(raw_interventions, start_day):
-    # Takes a list of interventions.
-    # Returns a function that computes beta from t.
+def parse_interventions(raw_interventions):
     interventions = []
     for change, date_s in raw_interventions:
         if date_s == '': continue
@@ -157,12 +155,16 @@ def interventions_to_beta(raw_interventions, start_day):
         except Exception:
             print("Non-parsing date (" + date_s + ")")
             continue
-        t = (date-start_day).days
         if change in INTERVENTION_BETA:
-            b = INTERVENTION_BETA[change]
-            interventions.append((t,b))
+            beta = INTERVENTION_BETA[change]
+            interventions.append((date,change,beta))
     interventions.sort()
-    interventions.reverse()
+    return interventions
+
+def interventions_to_beta(interventions, zero_day):
+    # Takes a list of interventions.
+    # Returns a function that computes beta from t.
+    interventions = [((d-zero_day).days, b) for d,_,b in reversed(interventions)]
     def beta(t):
         for iv_t, iv_b in interventions:
             if t >= iv_t: return iv_b
@@ -189,7 +191,7 @@ max_eig_id = int(np.argmax(w))
 equilibrium_growth_rate = np.exp(w[max_eig_id])
 equilibrium_state = v[:,max_eig_id]
 equilibrium_state = np.concatenate([[0], equilibrium_state])  # Add back S row.
-equilibrium_state /= np.sum(equilibrium_state[1:5]) # Noralize by active cases.
+equilibrium_state /= equilibrium_state[5] # Noralize by deaths.
 
 
 # Outputs:
@@ -203,47 +205,79 @@ validation_w.writerow(
         ["Province/State", "Country/Region", 
         "Deaths Predicted", "Deaths Actual"])
 
+if not os.path.exists('graphs'): os.makedirs('graphs')
 
-# Start calculating:
+# Run the model forward for each of the places:
 for k in sorted(population.keys()):
     if k not in places: continue
-    print("Place=",k)
-    # Compute y0, the initial conditions:
     ts = places[k]
     N = population[k]
-    latest_date = ts.dates[-1]
-    latest_D = ts.deaths[-1]
+    place_s = ' - '.join([s for s in k if s != ''])
+    print("Place =",place_s)
 
-    day0 = latest_date - datetime.timedelta(DAYS_INFECTION_TO_DEATH)
-    day0_idx = ts.dates.index(day0)
-    day0_D = ts.deaths[day0_idx]
+    # We find a region starting where deaths are recorded and ending where
+    # an intervention happens to do our curve fit with.
+    nz_deaths = np.nonzero(ts.deaths)
+    if len(nz_deaths[0]) == 0:
+        print("No deaths recorded, skipping: ", place_s)
+        continue
+    fit_start = nz_deaths[0][0]
 
-    infected = (latest_D - day0_D) / AVERAGE_DEATH_RATE
-    y0 = equilibrium_state * infected
+    interventions = parse_interventions(
+            interventions_by_place[(k[0], '', '')] +
+            interventions_by_place[(k[0], k[1], '')])
+    if not interventions: fit_end = len(ts.dates)
+    else: fit_end = ts.dates.index(interventions[0][0])+1
+        # TODO: push interp_end further ahead because intervention aren't instant?
+
+    # We fit the curve to find the starting value.
+    # TODO: also find country-custom betas this way.
+    fit_len = fit_end-fit_start
+    if fit_len < 1:
+        print("Interventions reported on or before first death; skipping", place_s)
+        continue
+    unintervened_deaths = ts.deaths[int(fit_start):int(fit_end)]
+    t = np.linspace(0,fit_len-1, fit_len)
+    starting_factor = np.exp(np.polyfit(t,
+        np.log(unintervened_deaths)-t*np.log(equilibrium_growth_rate), 0))
+
+    y0 = starting_factor * equilibrium_state
     y0[0] = N - np.sum(y0)
+    start_idx = fit_start
 
-    print("    ", day0_D, " <- Day 0 deaths.")
-    print("    ", y0[5], " <- Day 0 deaths, extrapolated")
+    days_to_present = len(ts.dates) - 1 - fit_start
 
-    days_simulation = DAYS_INFECTION_TO_DEATH + DAYS_FORECAST + 1
-    t = np.linspace(0, days_simulation, days_simulation)
+    days_simulation = days_to_present + DAYS_FORECAST + 1
+    t = np.linspace(-days_to_present, DAYS_FORECAST, days_simulation)
 
-    beta = interventions_to_beta(
-            interventions[(k[0], '', '')] +
-            interventions[(k[0], k[1], '')],
-            day0)
-    model.contact_rate = beta
+    model.contact_rate = interventions_to_beta(interventions, ts.dates[-1])
 
-    ret = odeint(lambda *a: model.derivative(*a), y0, t)
-    S, E, I, H, C, D, R = ret.T
+    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+    S, E, I, H, C, D, R = trajectories.T
 
-    estimated = I[DAYS_INFECTION_TO_DEATH]
-    deaths_predicted = D[DAYS_INFECTION_TO_DEATH]
+    # Estimation:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
-    if estimated > 1000:
-        infected_w.writerow(row_start +
-            [np.round(estimated, -3), N,
-            str(np.round((estimated/N)*100, 2)) + '%'])
-    else:
-        infected_w.writerow(row_start + ['', N, ''])
-    validation_w.writerow([k[0], k[1], deaths_predicted, latest_D])
+    estimated = np.round(I[DAYS_INFECTION_TO_DEATH], -3)
+    if estimated < 1000: estimated = ''
+    infected_w.writerow(row_start + [estimated])
+
+    # Latest deaths comparison:
+    deaths_predicted = D[DAYS_INFECTION_TO_DEATH]
+    deaths_actual = ts.deaths[-1]
+    validation_w.writerow([k[0], k[1], deaths_predicted, deaths_actual])
+
+    # Graphs:
+    fig = plt.figure(facecolor='w')
+    ax = fig.add_subplot(111, axisbelow=True)
+    ax.set_title(place_s)
+    ax.set_xlabel('Days (0=present)')
+    ax.set_ylabel('People (log)')
+    for var, curve in zip(Model.variables, trajectories.T):
+        ax.semilogy(t, curve, label=var)
+    ax.semilogy(t[0:days_to_present+1], ts.deaths[start_idx:],
+            's', label='D emp.')
+    legend = ax.legend()
+    legend.get_frame().set_alpha(0.5)
+    plt.savefig(os.path.join('graphs', place_s + '.png'))
+    plt.close('all') # Reset plot for next time.
+
