@@ -238,7 +238,7 @@ for k in sorted(population.keys()):
     S, E, I, H, C, D, R = ret.T
 
     estimated = I[DAYS_INFECTION_TO_DEATH]
-    deaths_predicted = I[DAYS_INFECTION_TO_DEATH]
+    deaths_predicted = D[DAYS_INFECTION_TO_DEATH]
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
     if estimated > 1000:
         infected_w.writerow(row_start +
