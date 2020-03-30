@@ -16,8 +16,8 @@ from common import *
 
 # ASSUMPTIONS:
 
-#TODO: these numbers are copied from neher.  Vet them more thoroughly.
 LATENT_PERIOD = 3.5
+    # Source: 3 Midas studies in fairly close agreement.
 INFECTIOUS_PERIOD = 4
 P_SEVERE = 0.10
 P_CRITICAL = 0.30
@@ -25,22 +25,12 @@ P_FATAL = 0.35
 HOSPITAL_DURATION = 4
 ICU_DURATION = 14
 
-
-DAYS_INFECTION_TO_DEATH = int(LATENT_PERIOD + INFECTIOUS_PERIOD +
-        HOSPITAL_DURATION + ICU_DURATION)
-  # On average, how long does a case of COVID19 last?
-
-AVERAGE_DEATH_RATE = P_SEVERE*P_CRITICAL*P_FATAL
-  # What fraction of COVID19 cases result in death?
-
 INTERVENTION_INFECTION_GROWTH_RATE = {
         'Default': 0.24,
         'Lockdown': 0.075,
         '~Lockdown': 0.1375,
         'Social distancing': 0.2}
   # Same question when there are active interventions.
-DAYS_FORECAST = 60
-  # How many days into the future do we simulate?
 
 def seir_beta_to_growth_rate(beta):
     sigma = 1/LATENT_PERIOD
@@ -206,6 +196,9 @@ comparison_w.writerow(
         "Deaths Predicted", "Deaths Actual"])
 
 if not os.path.exists('graphs'): os.makedirs('graphs')
+graph_days_forecast = 60
+  # How many days into the future do we simulate?
+
 
 # Run the model forward for each of the places:
 for k in sorted(population.keys()):
@@ -245,32 +238,35 @@ for k in sorted(population.keys()):
     y0[0] = N - np.sum(y0)
     start_idx = fit_start
 
+    present_date = ts.dates[-1]
     days_to_present = len(ts.dates) - 1 - fit_start
 
-    days_simulation = days_to_present + DAYS_FORECAST + 1
-    t = np.linspace(-days_to_present, DAYS_FORECAST, days_simulation)
+    days_simulation = days_to_present + graph_days_forecast + 1
+    t = np.linspace(-days_to_present, graph_days_forecast, days_simulation)
 
-    model.contact_rate = interventions_to_beta(interventions, ts.dates[-1])
+    model.contact_rate = interventions_to_beta(interventions, present_date)
 
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, C, D, R = trajectories.T
 
     # Estimation:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
-    estimated = np.round(I[DAYS_INFECTION_TO_DEATH], -3)
+    estimated = np.round(I[days_to_present], -3)
     if estimated < 1000: estimated = ''
     infected_w.writerow(row_start + [estimated])
 
     # Latest deaths comparison:
-    deaths_predicted = D[DAYS_INFECTION_TO_DEATH]
+    deaths_predicted = D[days_to_present]
     deaths_actual = ts.deaths[-1]
     comparison_w.writerow([k[0], k[1], deaths_predicted, deaths_actual])
 
     # Graphs:
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
-    ax.set_title(place_s)
-    ax.set_xlabel('Days (0=present)')
+    intervention_s = ', '.join(
+            ch+" on "+d.isoformat() for d,ch,_ in interventions)
+    ax.set_title(place_s + "\n" + intervention_s)
+    ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
     for var, curve in zip(Model.variables, trajectories.T):
         ax.semilogy(t, curve, label=var)
@@ -280,4 +276,3 @@ for k in sorted(population.keys()):
     legend.get_frame().set_alpha(0.5)
     plt.savefig(os.path.join('graphs', place_s + '.png'))
     plt.close('all') # Reset plot for next time.
-
