@@ -17,7 +17,7 @@ from common import *
 # ASSUMPTIONS:
 
 LATENT_PERIOD = 3.5
-    # Source: 3 Midas studies in fairly close agreement.
+    # Citation: 3 studies in the Midas Database with fairly close agreement.
 INFECTIOUS_PERIOD = 4
 P_SEVERE = 0.10
 P_CRITICAL = 0.30
@@ -208,17 +208,20 @@ for k in sorted(population.keys()):
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
+    raw_interventions = interventions_by_place[(k[0], k[1], '')]
+    if k[1] != '':
+        raw_interventions += interventions_by_place[(k[0], '', '')]
+    interventions = parse_interventions(raw_interventions)
+
     # We find a region starting where deaths are recorded and ending where
     # an intervention happens to do our curve fit with.
-    nz_deaths = np.nonzero(ts.deaths)
-    if len(nz_deaths[0]) == 0:
+    nz_deaths, = np.nonzero(ts.deaths)
+    if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", place_s)
         continue
-    fit_start = nz_deaths[0][0]
+    fit_start = nz_deaths[0]
 
-    interventions = parse_interventions(
-            interventions_by_place[(k[0], '', '')] +
-            interventions_by_place[(k[0], k[1], '')])
+
     if not interventions: fit_end = len(ts.dates)
     else: fit_end = ts.dates.index(interventions[0][0])+1
         # TODO: push interp_end further ahead because intervention aren't instant?
