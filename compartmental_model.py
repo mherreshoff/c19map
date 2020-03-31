@@ -26,10 +26,11 @@ HOSPITAL_DURATION = 4
 ICU_DURATION = 14
 
 INTERVENTION_INFECTION_GROWTH_RATE = {
-        'Default': 0.24,
+        'Unknown': 0.24,
+        'No Intervention': 0.24,
         'Lockdown': 0.075,
         '~Lockdown': 0.1375,
-        'Social distancing': 0.2}
+        'Social Distancing': 0.2}
   # Same question when there are active interventions.
 
 def seir_beta_to_growth_rate(beta):
@@ -130,41 +131,30 @@ def parse_int(s):
 population = {(r[0], r[1], '') : parse_int(r[3])
         for r in csv_as_matrix('data_population.csv')}
 
-interventions_by_place = collections.defaultdict(list)
-for country, region, change, date, explanation in csv_as_matrix('data_interventions.csv'):
-    p = canonicalize_place((country, region, ''))
-    if p is None: continue
-    interventions_by_place[p].append((change, date))
 
-def parse_interventions(raw_interventions):
-    interventions = []
-    for change, date_s in raw_interventions:
-        if date_s == '': continue
-        try:
-            date = dateutil.parser.parse(date_s).date()
-        except Exception:
-            print("Non-parsing date (" + date_s + ")")
-            continue
-        if change in INTERVENTION_BETA:
-            beta = INTERVENTION_BETA[change]
-            interventions.append((date,change,beta))
-    interventions.sort()
-    return interventions
+def default_beta(t):
+    return INTERVENTION_BETA['No Intervention']
 
-def interventions_to_beta(interventions, zero_day):
+def interventions_to_beta(iv_dates, iv_strings, zero_day):
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
-    interventions = [((d-zero_day).days, b) for d,_,b in reversed(interventions)]
+    if len(iv_dates) == 0: return default_beta
+    iv_offsets = [(d-zero_day).days for d in iv_dates]
+    lowest = min(iv_offsets)
+    highest = max(iv_offsets)
+    t_to_beta = {t: INTERVENTION_BETA[s] for t, s in zip(iv_offsets, iv_strings)}
     def beta(t):
-        for iv_t, iv_b in interventions:
-            if t >= iv_t: return iv_b
-        return INTERVENTION_BETA['Default']
+        t = int(np.floor(t))
+        if t in t_to_beta:
+            return t_to_beta[t]
+        if t < lowest: return t_to_beta[lowest]
+        return t_to_beta[highest]
     return beta
 
 
 # Set up a default version of the model:
 model = Model(
-        lambda t: INTERVENTION_BETA['Default'],
+        default_beta,
         LATENT_PERIOD,
         INFECTIOUS_PERIOD,
         P_SEVERE, HOSPITAL_DURATION,
@@ -181,7 +171,7 @@ max_eig_id = int(np.argmax(w))
 equilibrium_growth_rate = np.exp(w[max_eig_id])
 equilibrium_state = v[:,max_eig_id]
 equilibrium_state = np.concatenate([[0], equilibrium_state])  # Add back S row.
-equilibrium_state /= equilibrium_state[5] # Noralize by deaths.
+equilibrium_state /= equilibrium_state[5] # Normalize by deaths.
 
 
 # Outputs:
@@ -208,11 +198,6 @@ for k in sorted(population.keys()):
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
-    raw_interventions = interventions_by_place[(k[0], k[1], '')]
-    if k[1] != '':
-        raw_interventions += interventions_by_place[(k[0], '', '')]
-    interventions = parse_interventions(raw_interventions)
-
     # We find a region starting where deaths are recorded and ending where
     # an intervention happens to do our curve fit with.
     nz_deaths, = np.nonzero(ts.deaths)
@@ -222,9 +207,16 @@ for k in sorted(population.keys()):
     fit_start = nz_deaths[0]
 
 
-    if not interventions: fit_end = len(ts.dates)
-    else: fit_end = ts.dates.index(interventions[0][0])+1
-        # TODO: push interp_end further ahead because intervention aren't instant?
+    fit_end_date = None
+    for i,s in enumerate(ts.interventions):
+        if s != 'No Intervention':
+            fit_end_date = ts.intervention_dates[i]
+            break
+    if fit_end_date: fit_end = (fit_end_date-ts.dates[0]).days
+    else: fit_end = len(ts.dates)
+    if fit_end < 0: fit_end = 0
+    if fit_end > len(ts.dates): fit_end = len(ts.dates)
+    # TODO: push interp_end further ahead because intervention aren't instant?
 
     # We fit the curve to find the starting value.
     # TODO: also find country-custom betas this way.
@@ -247,7 +239,8 @@ for k in sorted(population.keys()):
     days_simulation = days_to_present + graph_days_forecast + 1
     t = np.linspace(-days_to_present, graph_days_forecast, days_simulation)
 
-    model.contact_rate = interventions_to_beta(interventions, present_date)
+    model.contact_rate = interventions_to_beta(
+            ts.intervention_dates, ts.interventions, present_date)
 
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, C, D, R = trajectories.T
@@ -266,8 +259,14 @@ for k in sorted(population.keys()):
     # Graphs:
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
+
+    intervention_starts = []
+    old_s = 'No Intervention'
+    for d,s in zip(ts.intervention_dates, ts.interventions):
+        if s!=old_s: intervention_starts.append((d, s))
+        old_s = s
     intervention_s = ', '.join(
-            ch+" on "+d.isoformat() for d,ch,_ in interventions)
+            s+" on "+d.isoformat() for d,s in intervention_starts)
     ax.set_title(place_s + "\n" + intervention_s)
     ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
