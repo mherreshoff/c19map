@@ -11,6 +11,9 @@ class TimeSeries:
         self.deaths = np.zeros(len(dates), dtype=int)
         self.recovered = np.zeros(len(dates), dtype=int)
 
+        self.intervention_dates = []
+        self.interventions = []
+
     def update(self, k, day, num):
         if k == 'confirmed': a = self.confirmed
         elif k == 'deaths': a = self.deaths
