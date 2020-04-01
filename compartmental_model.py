@@ -200,6 +200,10 @@ for k in sorted(population.keys()):
 
     # We find a region starting where deaths are recorded and ending where
     # an intervention happens to do our curve fit with.
+    for i in range(len(ts.deaths)-1):
+        if ts.deaths[i+1]<ts.deaths[i]:
+            ts.deaths[i+1] = ts.deaths[i]
+
     nz_deaths, = np.nonzero(ts.deaths)
     if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", place_s)
@@ -207,16 +211,16 @@ for k in sorted(population.keys()):
     fit_start = nz_deaths[0]
 
 
-    fit_end_date = None
+    first_iv_date = None
     for i,s in enumerate(ts.interventions):
         if s != 'No Intervention':
-            fit_end_date = ts.intervention_dates[i]
+            first_iv_date = ts.intervention_dates[i]
             break
-    if fit_end_date: fit_end = (fit_end_date-ts.dates[0]).days
+    if first_iv_date:
+        fit_end = (first_iv_date-ts.dates[0]).days + int(LATENT_PERIOD)
     else: fit_end = len(ts.dates)
     if fit_end < 0: fit_end = 0
     if fit_end > len(ts.dates): fit_end = len(ts.dates)
-    # TODO: push interp_end further ahead because intervention aren't instant?
 
     # We fit the curve to find the starting value.
     # TODO: also find country-custom betas this way.
