@@ -103,6 +103,20 @@ class Model:
             m[ti][ai] += x
         return m
 
+    def equilibrium(self):
+        # Find the equilibrium state:
+        m = model.companion_matrix()
+        m = m[1:,1:]
+            # Get rid of the 'S' variable.  Equilibrium only makes sense if we're
+            # assuming an infinite population to expand into.
+        w, v = np.linalg.eig(m)
+        max_eig_id = int(np.argmax(w))
+        growth_rate = np.exp(w[max_eig_id])
+        state = v[:,max_eig_id]
+        state = np.concatenate([[0], state])  # Add back S row.
+        state /= state[5] # Normalize by deaths.
+        return growth_rate, state
+
     def derivative(self, y, t):
         S,E,I,H,C,D,R = y
         N = np.sum(y) - D
@@ -161,18 +175,6 @@ model = Model(
         P_CRITICAL, ICU_DURATION,
         P_FATAL)
 
-# Find the equilibrium state:
-m = model.companion_matrix()
-m = m[1:,1:]
-    # get rid of the 'S' variable.  Equilibrium only makes sense if we're
-    # assuming an infinite population to expand into.
-w, v = np.linalg.eig(m)
-max_eig_id = int(np.argmax(w))
-equilibrium_growth_rate = np.exp(w[max_eig_id])
-equilibrium_state = v[:,max_eig_id]
-equilibrium_state = np.concatenate([[0], equilibrium_state])  # Add back S row.
-equilibrium_state /= equilibrium_state[5] # Normalize by deaths.
-
 
 # Outputs:
 infected_w = csv.writer(open('compartmental_estimated_infected.csv', 'w'))
@@ -228,6 +230,8 @@ for k in sorted(population.keys()):
     if fit_len < 1:
         print("Interventions reported on or before first death; skipping", place_s)
         continue
+
+    equilibrium_growth_rate, equilibrium_state = model.equilibrium()
     unintervened_deaths = ts.deaths[int(fit_start):int(fit_end)]
     t = np.linspace(0,fit_len-1, fit_len)
     starting_factor = np.exp(np.polyfit(t,
@@ -246,8 +250,11 @@ for k in sorted(population.keys()):
     model.contact_rate = interventions_to_beta(
             ts.intervention_dates, ts.interventions, present_date)
 
-    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+    trajectories, info = odeint(lambda *a: model.derivative(*a), y0, t, full_output=True)
     S, E, I, H, C, D, R = trajectories.T
+
+    #for k, v in sorted(info.items()):
+    #    print("\t", k, ": ", v)
 
     # Estimation:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
