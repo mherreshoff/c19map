@@ -212,17 +212,27 @@ for k in sorted(population.keys()):
         continue
     fit_start = nz_deaths[0]
 
+    try:
+        iv_idx = ts.intervention_dates.index(ts.dates[fit_start])
+        first_iv = ts.interventions[iv_idx]
+    except:
+        iv_idx = 0
+        first_iv = 'No Intervention'
 
-    first_iv_date = None
-    for i,s in enumerate(ts.interventions):
-        if s != 'No Intervention':
-            first_iv_date = ts.intervention_dates[i]
+    change_iv_date = None
+    for i in range(iv_idx, len(ts.intervention_dates)):
+        if ts.interventions[iv_idx] != first_iv:
+            change_iv_date = ts.intervention_dates[i]
             break
-    if first_iv_date:
-        fit_end = (first_iv_date-ts.dates[0]).days + int(LATENT_PERIOD)
+
+    if change_iv_date:
+        fit_end = (change_iv_date-ts.dates[0]).days + int(LATENT_PERIOD)
     else: fit_end = len(ts.dates)
+
     if fit_end < 0: fit_end = 0
     if fit_end > len(ts.dates): fit_end = len(ts.dates)
+
+    print(ts.dates[fit_start], ts.dates[fit_end-1])
 
     # We fit the curve to find the starting value.
     # TODO: also find country-custom betas this way.
