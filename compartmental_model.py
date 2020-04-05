@@ -216,7 +216,6 @@ graph_days_forecast = 60
 # Run the model forward for each of the places:
 for k in sorted(places.keys()):
     if k not in population: continue
-    if k[0] not in tuned_countries: continue
     ts = places[k]
     N = population[k]
     place_s = ' - '.join([s for s in k if s != ''])
@@ -248,7 +247,7 @@ for k in sorted(places.keys()):
 
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, C, D, R = trajectories.T
-    # TODO cut off when S < .9*N for accuracy in situations 
+    # TODO: cut off when S < .9*N for accuracy in situations 
 
     if k[0] in tuned_countries:
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
@@ -258,6 +257,7 @@ for k in sorted(places.keys()):
                 ts.intervention_dates, ts.interventions, present_date,
                 growth_rate_power=gr_pow)
         growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
+            # Recompute the equilibrium since we've altered the model.
     else:
         def loss(s): return np.linalg.norm(D*s-target)
         state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
