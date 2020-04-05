@@ -16,8 +16,8 @@ from common import *
 
 
 # ASSUMPTIONS:
-
 LATENT_PERIOD = 3.5
+    # 1/sigma
     # Citation: 3 studies in the Midas Database with fairly close agreement.
 INFECTIOUS_PERIOD = 4
 P_SEVERE = 0.10
@@ -26,6 +26,7 @@ P_FATAL = 0.35
 HOSPITAL_DURATION = 4
 ICU_DURATION = 14
 
+# Growth rates, used to calculate betas:
 INTERVENTION_INFECTION_GROWTH_RATE = {
         'Unknown': 0.24,
         'No Intervention': 0.24,
@@ -34,18 +35,26 @@ INTERVENTION_INFECTION_GROWTH_RATE = {
         'Social Distancing': 0.2}
   # Same question when there are active interventions.
 
+tuned_countries = set(['China', 'Japan', 'Korea, South'])
+
+_seir_beta_to_gr_cache = {}
 def seir_beta_to_growth_rate(beta):
+    if beta in _seir_beta_to_gr_cache: return _seir_beta_to_gr_cache[beta]
     sigma = 1/LATENT_PERIOD
     gamma = 1/INFECTIOUS_PERIOD
     m = np.array([
         [-sigma, beta],
-        [sigma, -gamma]])
+        [sigma, -gamma]], dtype=float)
     # Note: this matrix is the linearized version of the SEIR diffeq
     # where S~N for just E and I.
     w, v = np.linalg.eig(m)
-    return np.exp(np.max(w)) - 1
+    result = np.exp(np.max(w)) - 1
+    _seir_beta_to_gr_cache[beta] = result
+    return result
 
+_seir_gr_to_beta_cache = {}
 def seir_growth_rate_to_beta(igr):
+    if igr in _seir_gr_to_beta_cache: return _seir_gr_to_beta_cache[igr]
     sigma = 1/LATENT_PERIOD
     gamma = 1/INFECTIOUS_PERIOD
     beta = sp.Symbol('beta')
@@ -59,7 +68,9 @@ def seir_growth_rate_to_beta(igr):
     for eigenval in eigenvals:
         solns += sp.solvers.solve(eigenval-target_eigenval, beta)
     assert len(solns) == 1
-    return solns[0]
+    result, = solns
+    _seir_gr_to_beta_cache[igr] = result
+    return result
 
 INTERVENTION_BETA = {n : seir_growth_rate_to_beta(igr)
         for n, igr in INTERVENTION_INFECTION_GROWTH_RATE.items()} 
@@ -150,14 +161,23 @@ population = {(r[0], r[1], '') : parse_int(r[3])
 def default_beta(t):
     return INTERVENTION_BETA['No Intervention']
 
-def interventions_to_beta(iv_dates, iv_strings, zero_day):
+def interventions_to_beta(iv_dates, iv_strings, zero_day,
+        growth_rate_power=None):
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
     if len(iv_dates) == 0: return default_beta
     iv_offsets = [(d-zero_day).days for d in iv_dates]
     lowest = min(iv_offsets)
     highest = max(iv_offsets)
-    t_to_beta = {t: INTERVENTION_BETA[s] for t, s in zip(iv_offsets, iv_strings)}
+    if growth_rate_power is None:
+        t_to_beta = {t: INTERVENTION_BETA[s]
+                for t, s in zip(iv_offsets, iv_strings)}
+    else:
+        t_to_beta = {}
+        for t, s in zip(iv_offsets, iv_strings):
+            gr = seir_beta_to_growth_rate(INTERVENTION_BETA[s])
+            gr = (1 + gr) ** growth_rate_power - 1
+            t_to_beta[t] = seir_growth_rate_to_beta(gr)
     def beta(t):
         t = int(np.floor(t))
         if t in t_to_beta:
@@ -196,6 +216,7 @@ graph_days_forecast = 60
 # Run the model forward for each of the places:
 for k in sorted(places.keys()):
     if k not in population: continue
+    if k[0] not in tuned_countries: continue
     ts = places[k]
     N = population[k]
     place_s = ' - '.join([s for s in k if s != ''])
@@ -227,10 +248,19 @@ for k in sorted(places.keys()):
 
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, C, D, R = trajectories.T
-    # TODO cut off when S < .9*N for accuracy in situations like San Marino.
+    # TODO cut off when S < .9*N for accuracy in situations 
 
-    def loss(s): return np.linalg.norm(D*s-target)
-    state_scale = scipy.optimize.minimize_scalar(loss).x
+    if k[0] in tuned_countries:
+        def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
+        gr_pow, state_scale = scipy.optimize.minimize(
+                loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
+        model.contact_rate = interventions_to_beta(
+                ts.intervention_dates, ts.interventions, present_date,
+                growth_rate_power=gr_pow)
+        growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
+    else:
+        def loss(s): return np.linalg.norm(D*s-target)
+        state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
 
     present_date = ts.dates[-1]
     days_to_present = len(ts.dates) - 1 - start_idx
