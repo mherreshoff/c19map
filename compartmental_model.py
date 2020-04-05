@@ -8,6 +8,7 @@ import numpy as np
 import os
 import pickle
 from scipy.integrate import odeint
+import scipy
 import sympy as sp
 import sys
 
@@ -103,9 +104,9 @@ class Model:
             m[ti][ai] += x
         return m
 
-    def equilibrium(self):
+    def equilibrium(self, t=0):
         # Find the equilibrium state:
-        m = model.companion_matrix()
+        m = model.companion_matrix(t)
         m = m[1:,1:]
             # Get rid of the 'S' variable.  Equilibrium only makes sense if we're
             # assuming an infinite population to expand into.
@@ -193,74 +194,53 @@ graph_days_forecast = 60
 
 
 # Run the model forward for each of the places:
-for k in sorted(population.keys()):
-    if k not in places: continue
+for k in sorted(places.keys()):
+    if k not in population: continue
     ts = places[k]
     N = population[k]
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
-    # We find a region starting where deaths are recorded and ending where
-    # an intervention happens to do our curve fit with.
+    # Make deaths monotone:
     for i in range(len(ts.deaths)-1):
         if ts.deaths[i+1]<ts.deaths[i]:
             ts.deaths[i+1] = ts.deaths[i]
+
+    # We find a region starting where deaths are recorded and ending where
+    # an intervention happens to do our curve fit with.
 
     nz_deaths, = np.nonzero(ts.deaths)
     if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", place_s)
         continue
-    fit_start = nz_deaths[0]
-
-    try:
-        iv_idx = ts.intervention_dates.index(ts.dates[fit_start])
-        first_iv = ts.interventions[iv_idx]
-    except:
-        iv_idx = 0
-        first_iv = 'No Intervention'
-
-    change_iv_date = None
-    for i in range(iv_idx, len(ts.intervention_dates)):
-        if ts.interventions[iv_idx] != first_iv:
-            change_iv_date = ts.intervention_dates[i]
-            break
-
-    if change_iv_date:
-        fit_end = (change_iv_date-ts.dates[0]).days + int(LATENT_PERIOD)
-    else: fit_end = len(ts.dates)
-
-    if fit_end < 0: fit_end = 0
-    if fit_end > len(ts.dates): fit_end = len(ts.dates)
-
-    print(ts.dates[fit_start], ts.dates[fit_end-1])
-
-    # We fit the curve to find the starting value.
-    # TODO: also find country-custom betas this way.
-    fit_len = fit_end-fit_start
-    if fit_len < 1:
-        print("Interventions reported on or before first death; skipping", place_s)
-        continue
-
-    equilibrium_growth_rate, equilibrium_state = model.equilibrium()
-    unintervened_deaths = ts.deaths[int(fit_start):int(fit_end)]
-    t = np.linspace(0,fit_len-1, fit_len)
-    starting_factor = np.exp(np.polyfit(t,
-        np.log(unintervened_deaths)-t*np.log(equilibrium_growth_rate), 0))
-
-    y0 = starting_factor * equilibrium_state
-    y0[0] = N - np.sum(y0)
-    start_idx = fit_start
-
+    start_idx = nz_deaths[0]
+    fit_length = len(ts.dates)-start_idx
     present_date = ts.dates[-1]
-    days_to_present = len(ts.dates) - 1 - fit_start
-
-    days_simulation = days_to_present + graph_days_forecast + 1
-    t = np.linspace(-days_to_present, graph_days_forecast, days_simulation)
-
     model.contact_rate = interventions_to_beta(
             ts.intervention_dates, ts.interventions, present_date)
+    growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
 
-    trajectories, info = odeint(lambda *a: model.derivative(*a), y0, t, full_output=True)
+    t = np.arange(fit_length) - (fit_length+1)
+    target = ts.deaths[start_idx:]
+    y0 = equilibrium_state.copy()
+    y0[0] = (10**9) - np.sum(y0)
+
+    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+    S, E, I, H, C, D, R = trajectories.T
+    # TODO cut off when S < .9*N for accuracy in situations like San Marino.
+
+    def loss(s): return np.linalg.norm(D*s-target)
+    state_scale = scipy.optimize.minimize_scalar(loss).x
+
+    present_date = ts.dates[-1]
+    days_to_present = len(ts.dates) - 1 - start_idx
+    days_simulation = days_to_present + graph_days_forecast + 1
+    t = np.arange(days_simulation) - days_to_present
+    
+    y0 = state_scale * equilibrium_state
+    y0[0] = N - np.sum(y0)
+
+    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, C, D, R = trajectories.T
 
     #for k, v in sorted(info.items()):
