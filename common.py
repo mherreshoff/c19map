@@ -28,6 +28,18 @@ def csv_as_matrix(path):
     return [r for r in csv.reader(open(path, 'r'))][1:]
 
 
+# Loading popultion data:
+_population_data = None
+def load_population_data():
+    global _population_data
+    if _population_data is None:
+        _population_data = {
+                (r[0], r[1], '') : int(r[3].replace(',',''))
+                for r in csv_as_matrix('data_population.csv')}
+    return _population_data
+
+
+
 # Canonicalization/reconciliation:
 recon_data_loaded = False
 country_renames = None

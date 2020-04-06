@@ -152,12 +152,7 @@ class Model:
 
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
-
-def parse_int(s):
-    return int(s.replace(',', ''))
-
-population = {(r[0], r[1], '') : parse_int(r[3])
-        for r in csv_as_matrix('data_population.csv')}
+population = load_population_data()
 
 
 def interventions_to_beta(iv_dates, iv_strings, zero_day,
