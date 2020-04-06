@@ -27,18 +27,24 @@ INFECTIOUS_PERIOD = 4
     # TODO: get citation from Brandon.
 P_HOSPITAL = 0.10
     # Probability an infectious case gets hospitalized
-HOSPITAL_DURATION = 17
+    # TODO: find citation & tweak.
+HOSPITAL_DURATION = 9.75
     # Average length of hospital stay.
-P_DEATH = 0.35
-    # Probability of death given hospitaliation
+    # Note: hospital stays for dying people and recovering people aren't the same length.
+    # We use the duration for dying people, because care about the accuracy of
+    # the death curve more.
+    # 11.2 -> https://www.medrxiv.org/content/10.1101/2020.02.07.20021154v1
+    # 8.3 -> https://www.medrxiv.org/content/medrxiv/early/2020/01/28/2020.01.26.20018754.full.pdf
+P_DEATH = 0.14
+    # Probability of death given hospitaliation.
+    # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
-# Growth rates, used to calculate beta(t):
-# TODO: change these to have a leading one, simplifying a lot of other stuff.
+# Growth rates, used to calculate contact_rate a.k.a. beta(t):
+# TODO: calculate these directly from all the input data.
 INTERVENTION_INFECTION_GROWTH_RATE = {
         'Unknown': 0.24,
         'No Intervention': 0.24,
         'Lockdown': 0.075,
-        '~Lockdown': 0.1375,
         'Social Distancing': 0.2}
 
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
@@ -198,11 +204,6 @@ infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
 
-comparison_w = csv.writer(open('compartmental_comparison.csv', 'w'))
-comparison_w.writerow(
-        ["Province/State", "Country/Region", 
-        "Deaths Predicted", "Deaths Actual"])
-
 # TODO: add flag for whether graphs happen.
 graph_output_dir = 'graphs'
 if os.path.exists(graph_output_dir):
@@ -211,6 +212,12 @@ os.makedirs(graph_output_dir)
 
 graph_days_forecast = 60  #TODO: flag.
   # How many days into the future do we simulate?
+
+# Totals: for the historytalbe output.
+history_len = len(list(places.values())[0].dates)
+world_confirmed = np.zeros(history_len)
+world_deaths = np.zeros(history_len)
+world_estimated_cases = np.zeros(history_len)
 
 
 # Run the model forward for each of the places:
@@ -223,9 +230,8 @@ for k in sorted(places.keys()):
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
-    # We find a region starting where deaths are recorded and ending where
-    # an intervention happens to do our curve fit with.
-
+    # We find the first death and start simulating from there
+    # with the population set really big.
     nz_deaths, = np.nonzero(ts.deaths)
     if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", place_s)
@@ -243,8 +249,9 @@ for k in sorted(places.keys()):
 
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, D, R = trajectories.T
-    # TODO: cut off when S < .9*N for accuracy in situations 
+    # TODO: cut off when S < .9*N or some such for accuracy.
 
+    # Then see how much to scale the death data to G
     if k[0] in tuned_countries:
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
@@ -269,19 +276,26 @@ for k in sorted(places.keys()):
     trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, D, R = trajectories.T
 
-    #for k, v in sorted(info.items()):
-    #    print("\t", k, ": ", v)
+    estimated_cases = E+I+H+D+R  # Everyone who's ever been a case.
+    # Pad out our growth curve back to time zero with an exponential.
+    padding = []
+    padding_next = estimated_cases[0]
+    for i in range(start_idx):
+        padding_next /= growth_rate
+        padding.append(padding_next)
+    padding.reverse()
+    estimated_cases = np.concatenate([padding, estimated_cases])
+
+    # Update world history table:
+    world_confirmed += ts.confirmed
+    world_deaths += ts.deaths
+    world_estimated_cases += estimated_cases[:len(ts.dates)]
 
     # Estimation:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
-    estimated = np.round(I[days_to_present], -3)
-    if estimated < 1000: estimated = ''
-    infected_w.writerow(row_start + [estimated])
-
-    # Latest deaths comparison:
-    deaths_predicted = D[days_to_present]
-    deaths_actual = ts.deaths[-1]
-    comparison_w.writerow([k[0], k[1], deaths_predicted, deaths_actual])
+    latest_estimate = np.round(estimated_cases[len(ts.dates)-1], -3)
+    if latest_estimate < 1000: estimated = ''
+    infected_w.writerow(row_start + [latest_estimate])
 
     # Graphs:
     fig = plt.figure(facecolor='w')
