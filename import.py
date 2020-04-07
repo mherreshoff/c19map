@@ -52,7 +52,7 @@ for url, file_path, day in downloads:
 
 
 def fetch_intervention_data():
-    """Download the c19map.org's intervention data."""
+    """Download c19map.org's intervention data."""
     csv_url = args.sheets_csv_fetcher.format(
         doc=args.interventions_doc, sheet=args.interventions_sheet)
     csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
@@ -84,17 +84,18 @@ def fetch_intervention_data():
         if p in interventions:
             print("Duplicate rows for place ",p)
         ivs = [row[c] for c in date_cols]
-        interventions[p] = (dates, ivs)
-    return interventions
+        interventions[p] = ivs
+    return dates, interventions
 
 
 print("Fetching latest intervention data")
-interventions = fetch_intervention_data()
-
+intervention_dates, interventions = fetch_intervention_data()
+intervention_unknown = ['Unknown' for d in intervention_dates]
 
 # Read our JHU data, and reconcile it together:
 places = {}
 interventions_recorded = set()
+unknown_interventions_places = set()
 throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
 def first_of(d, ks):
@@ -124,10 +125,13 @@ for url, file_name, day in downloads:
         if p not in places:
             places[p] = TimeSeries(dates)
             if p in interventions:
-                iv_ds, ivs = interventions[p]
-                places[p].intervention_dates = iv_ds
-                places[p].interventions = ivs
+                places[p].intervention_dates = intervention_dates
+                places[p].interventions = interventions[p]
                 interventions_recorded.add(p)
+            else:
+                places[p].intervention_dates = intervention_dates
+                places[p].interventions = intervention_unknown
+                unknown_interventions_places.add(p)
 
         if latitude is not None and longitude is not None:
             places[p].latitude = latitude
@@ -136,7 +140,7 @@ for url, file_name, day in downloads:
         places[p].update('deaths', day, deaths)
         places[p].update('recovered', day, recovered)
 
-for p in interventions.keys():
+for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
         print("Lost intervention data for: ", p)
 
