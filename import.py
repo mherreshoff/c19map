@@ -124,12 +124,11 @@ for url, file_name, day in downloads:
 
         if p not in places:
             places[p] = TimeSeries(dates)
+            places[p].intervention_dates = intervention_dates
             if p in interventions:
-                places[p].intervention_dates = intervention_dates
                 places[p].interventions = interventions[p]
                 interventions_recorded.add(p)
             else:
-                places[p].intervention_dates = intervention_dates
                 places[p].interventions = intervention_unknown
                 unknown_interventions_places.add(p)
 
