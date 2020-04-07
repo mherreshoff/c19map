@@ -80,10 +80,6 @@ def seir_growth_rate_to_beta(igr):
     return solns[0]
 
 
-INTERVENTION_BETA = {n : seir_growth_rate_to_beta(igr)
-        for n, igr in INTERVENTION_INFECTION_GROWTH_RATE.items()} 
-
-
 class Model:
     variables = "SEIHDR"
     var_to_id = {v: i for i, v in enumerate(variables)}
@@ -155,32 +151,30 @@ places = pickle.load(open('time_series.pkl', 'rb'))
 population = load_population_data()
 
 
-def interventions_to_beta(iv_dates, iv_strings, zero_day,
-        growth_rate_power=None):
+def interventions_to_gr_by_date(
+        iv_dates, iv_strings, growth_rate_power=None):
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
     if growth_rate_power is None:
-        betas = INTERVENTION_BETA
+        growth_rate = INTERVENTION_INFECTION_GROWTH_RATE 
     else:
-        betas = {}
-        for k, b in INTERVENTION_BETA.items():
-            gr = seir_beta_to_growth_rate(b)
+        growth_rate = {}
+        for k, gr in INTERVENTION_INFECTION_GROWTH_RATE.items():
             gr = (1 + gr) ** growth_rate_power - 1
-            betas[k] = seir_growth_rate_to_beta(gr)
+            growth_rate[k] = gr
+    return {d: growth_rate[s] for d, s in zip(iv_dates, iv_strings)}
 
-    if len(iv_dates) == 0:
-        return lambda t:betas['No Intervention']
-    iv_offsets = [(d-zero_day).days for d in iv_dates]
-    lowest = min(iv_offsets)
-    highest = max(iv_offsets)
-    t_to_beta = {t: betas[s]
-            for t, s in zip(iv_offsets, iv_strings)}
+
+def gr_by_date_to_beta_fn(gr_by_date, zero_day):
+    t_to_beta = {(d-zero_day).days: seir_growth_rate_to_beta(g)
+            for d, g in gr_by_date.items()}
+    lowest = min(t_to_beta.keys())
+    highest = max(t_to_beta.keys())
     def beta(t):
         t = int(np.floor(t))
-        if t in t_to_beta:
-            return t_to_beta[t]
         if t < lowest: return t_to_beta[lowest]
-        return t_to_beta[highest]
+        if t > highest: return t_to_beta[highest]
+        if t in t_to_beta: return t_to_beta[t]
     return beta
 
 
@@ -194,10 +188,17 @@ model = Model(
 
 
 # Outputs:
-infected_w = csv.writer(open('compartmental_estimated_infected.csv', 'w'))
+infected_w = csv.writer(open('model_estimated_infected.csv', 'w'))
 infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
+
+growth_rate_w = csv.writer(open('model_limiting_growth_rates.csv', 'w'))
+headers = ["Province/State", "Country/Region", "Lat", "Long"]
+intervention_dates = list(places.values())[0].intervention_dates
+headers += ["%d/%d/%d" % (d.month, d.day, d.year%100)
+        for d in intervention_dates]
+growth_rate_w.writerow(headers)
 
 # TODO: add flag for whether graphs happen.
 graph_output_dir = 'graphs'
@@ -208,7 +209,7 @@ os.makedirs(graph_output_dir)
 graph_days_forecast = 60  #TODO: flag.
   # How many days into the future do we simulate?
 
-# Totals: for the historytalbe output.
+# Totals: for the historytable output.
 history_len = len(list(places.values())[0].dates)
 world_confirmed = np.zeros(history_len)
 world_deaths = np.zeros(history_len)
@@ -233,8 +234,9 @@ for k in sorted(places.keys()):
         continue
     start_idx = nz_deaths[0]
     fit_length = len(ts.dates)-start_idx
-    model.contact_rate = interventions_to_beta(
-            ts.intervention_dates, ts.interventions, present_date)
+    gr_by_date = interventions_to_gr_by_date(
+            ts.intervention_dates, ts.interventions)
+    model.contact_rate = gr_by_date_to_beta_fn(gr_by_date, present_date)
     growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
 
     t = np.arange(fit_length) - (fit_length+1)
@@ -251,14 +253,15 @@ for k in sorted(places.keys()):
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
-        model.contact_rate = interventions_to_beta(
-                ts.intervention_dates, ts.interventions, present_date,
-                growth_rate_power=gr_pow)
+        gr_by_date = interventions_to_gr_by_date(
+                ts.intervention_dates, ts.interventions, gr_pow)
+        model.contact_rate = gr_by_date_to_beta_fn(gr_by_date, present_date)
         growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
-            # Recompute the equilibrium since we've altered the model.
+        # Recompute the equilibrium since we've altered the model.
     else:
         def loss(s): return np.linalg.norm(D*s-target)
         state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
+        gr_pow = None
 
     present_date = ts.dates[-1]
     days_to_present = len(ts.dates) - 1 - start_idx
@@ -291,6 +294,10 @@ for k in sorted(places.keys()):
     latest_estimate = np.round(estimated_cases[len(ts.dates)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
+
+    # Time Sequence for Growth Rates:
+    growth_rates = [gr_by_date[d] for d in intervention_dates]
+    growth_rate_w.writerow(row_start + growth_rates)
 
     # Graphs:
     fig = plt.figure(facecolor='w')
