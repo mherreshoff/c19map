@@ -188,12 +188,12 @@ model = Model(
 
 
 # Outputs:
-infected_w = csv.writer(open('model_estimated_infected.csv', 'w'))
+infected_w = csv.writer(open('output_estimated_infected.csv', 'w'))
 infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
         "Estimated", "Region Population", "Estimated Per Capita"])
 
-growth_rate_w = csv.writer(open('model_limiting_growth_rates.csv', 'w'))
+growth_rate_w = csv.writer(open('output_limiting_growth_rates.csv', 'w'))
 headers = ["Province/State", "Country/Region", "Lat", "Long"]
 intervention_dates = list(places.values())[0].intervention_dates
 headers += ["%d/%d/%d" % (d.month, d.day, d.year%100)
@@ -210,11 +210,10 @@ graph_days_forecast = 60  #TODO: flag.
   # How many days into the future do we simulate?
 
 # Totals: for the historytable output.
-history_len = len(list(places.values())[0].dates)
-world_confirmed = np.zeros(history_len)
-world_deaths = np.zeros(history_len)
-world_estimated_cases = np.zeros(history_len)
-
+history_dates = list(places.values())[0].dates
+world_confirmed = np.zeros(len(history_dates))
+world_deaths = np.zeros(len(history_dates))
+world_estimated_cases = np.zeros(len(history_dates))
 
 # Run the model forward for each of the places:
 for k in sorted(places.keys()):
@@ -321,3 +320,16 @@ for k in sorted(places.keys()):
     legend.get_frame().set_alpha(0.5)
     plt.savefig(os.path.join('graphs', place_s + '.png'))
     plt.close('all') # Reset plot for next time.
+
+# Output world history table:
+history_w = csv.writer(open('output_world_history.csv', 'w'))
+history_w.writerow([
+    "Report Date", "Report Date String", "Confirmed", "Deaths", "Estimated"])
+
+for i, d in enumerate(history_dates):
+    short_date = "%d/%d/%d" % (d.month, d.day, d.year%100)
+    date_str = d.isoformat()
+    confirmed = world_confirmed[i]
+    deaths = world_deaths[i]
+    estimated_cases = np.round(world_estimated_cases[i])
+    history_w.writerow([short_date, date_str, confirmed, deaths, estimated_cases])
