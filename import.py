@@ -152,15 +152,18 @@ for p in sorted(places.keys()):
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered
 
-# Merge in French Polynesia:
-france = ('France', 'France', '')
-french_polynesia = ('France', 'French Polynesia', '')
-if french_polynesia in places:
-    places[france].confirmed += places[french_polynesia].confirmed
-    places[france].deaths += places[french_polynesia].deaths
-    places[france].recovered += places[french_polynesia].recovered
-    del places[french_polynesia]
-
+# Fix the fact that France was recorded as French Polynesia on March 23rd:
+france_k = ('France', 'France', '')
+french_polynesia_k = ('France', 'French Polynesia', '')
+france = places[france_k]
+french_polynesia = places[french_polynesia_k]
+idx = france.dates.index(datetime.date(2020, 3, 23))
+france.confirmed[idx] = french_polynesia.confirmed[idx]
+france.deaths[idx] = french_polynesia.deaths[idx]
+france.recovered[idx] = french_polynesia.recovered[idx]
+french_polynesia.confirmed[idx] = french_polynesia.confirmed[idx-1]
+french_polynesia.deaths[idx] = french_polynesia.deaths[idx-1]
+french_polynesia.recovered[idx] = french_polynesia.recovered[idx-1]
 
 
 # Output the CSVs:
