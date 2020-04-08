@@ -47,6 +47,16 @@ INTERVENTION_INFECTION_GROWTH_RATE = {
         'Lockdown': 0.075,
         'Social Distancing': 0.2}
 
+# Minimum number of deaths needed to tune gowth rates.
+empirical_growth_min_deaths = 100
+
+# Largest fraction of the population a growth can be observed at and still be trustworthy.
+empirical_growth_max_pop_frac = 0.03
+
+# How many days does an intervention have to be in effect before we consider
+# growth data to represent it.
+empirical_growth_inv_days = 20
+
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
 
 @functools.lru_cache(maxsize=10000)
@@ -149,6 +159,43 @@ class Model:
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
 population = load_population_data()
+def iterate_places():
+    for k, ts in sorted(places.items()):
+        if k not in population: continue
+        N = population[k]
+        yield k, N, ts
+
+
+# Calculate Empirical Growth Rates:
+empirical_growths = collections.defaultdict(list)
+
+for k, N, ts in iterate_places():
+    country = k[0]
+    if country in tuned_countries: continue
+
+    # Get the set of dates after a sufficiently long streak of the same intervention:
+    stable_dates = set()
+    prev_inv = ts.interventions[0]
+    run = 1000
+    for inv_d, inv in zip(ts.intervention_dates, ts.interventions):
+        if inv != prev_inv: run = 1
+        else: run += 1
+        prev_inv = inv
+        if run >= empirical_growth_inv_days:
+            stable_dates.add(inv_d)
+
+    for date, d, nd in zip(ts.dates, ts.deaths, ts.deaths[1:]):
+        if date not in stable_dates: continue
+        try:
+            inv_idx = ts.intervention_dates.index(date)
+            inv = ts.interventions[inv_idx]
+        except ValueError:
+            continue
+        if d < empirical_growth_min_deaths: continue
+        if d > N*empirical_growth_max_pop_frac: continue
+        growth = nd/d
+        # TODO check for being at the start of an intervention.
+        empirical_growths[inv].append(growth)
 
 
 def interventions_to_gr_by_date(
@@ -216,12 +263,8 @@ world_deaths = np.zeros(len(history_dates))
 world_estimated_cases = np.zeros(len(history_dates))
 
 # Run the model forward for each of the places:
-for k in sorted(places.keys()):
-    if k not in population: continue
-
-    ts = places[k]
+for k, N, ts in iterate_places():
     present_date = ts.dates[-1]
-    N = population[k]
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
