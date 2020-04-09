@@ -235,6 +235,12 @@ model = Model(
 
 
 # Outputs:
+all_vars_w = csv.writer(open('output_all_vars.csv', 'w'))
+all_vars_w.writerow(
+        ["Province/State", "Country/Region", "Lat", "Long"] +
+        [v for v in Model.variables])
+
+
 infected_w = csv.writer(open('output_estimated_infected.csv', 'w'))
 infected_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long",
@@ -331,8 +337,11 @@ for k, N, ts in iterate_places():
     world_deaths += ts.deaths
     world_estimated_cases += estimated_cases[:len(ts.dates)]
 
-    # Estimation:
+    # Variables:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
+    all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,days_to_present])))
+
+    # Estimation:
     latest_estimate = np.round(estimated_cases[len(ts.dates)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
