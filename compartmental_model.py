@@ -10,6 +10,7 @@ import os
 import pickle
 from scipy.integrate import odeint
 import scipy
+import scipy.stats
 import shutil
 import sympy as sp
 import sys
@@ -25,7 +26,7 @@ LATENT_PERIOD = 3.5
 INFECTIOUS_PERIOD = 4
     # 1/gamma - The average length of time a person stays infectious
     # TODO: get citation from Brandon.
-P_HOSPITAL = 0.10
+P_HOSPITAL = 0.137
     # Probability an infectious case gets hospitalized
     # TODO: find citation & tweak.
 HOSPITAL_DURATION = 9.75
@@ -40,12 +41,8 @@ P_DEATH = 0.14
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
 # Growth rates, used to calculate contact_rate a.k.a. beta(t):
-# TODO: calculate these directly from all the input data.
-INTERVENTION_INFECTION_GROWTH_RATE = {
-        'Unknown': 0.24,
-        'No Intervention': 0.24,
-        'Lockdown': 0.075,
-        'Social Distancing': 0.2}
+# These get calculated from the input data below.
+growth_rate_by_intervention = {}
 
 # Minimum number of deaths needed to tune gowth rates.
 empirical_growth_min_deaths = 100
@@ -58,6 +55,7 @@ empirical_growth_max_pop_frac = 0.03
 empirical_growth_inv_days = 20
 
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
+#tuned_countries = set()
 
 @functools.lru_cache(maxsize=10000)
 def seir_beta_to_growth_rate(beta):
@@ -184,6 +182,7 @@ for k, N, ts in iterate_places():
         if run >= empirical_growth_inv_days:
             stable_dates.add(inv_d)
 
+    empirical_growths_here = collections.defaultdict(list)
     for date, d, nd in zip(ts.dates, ts.deaths, ts.deaths[1:]):
         if date not in stable_dates: continue
         try:
@@ -195,7 +194,15 @@ for k, N, ts in iterate_places():
         if d > N*empirical_growth_max_pop_frac: continue
         growth = nd/d
         # TODO check for being at the start of an intervention.
-        empirical_growths[inv].append(growth)
+        empirical_growths_here[inv].append(growth)
+    for inv, gs in empirical_growths_here.items():
+        empirical_growths[inv].append(scipy.stats.gmean(gs))
+
+for k, gs in sorted(empirical_growths.items()):
+    m = np.median(gs)
+    growth_rate_by_intervention[k] = m - 1.0
+    print('Intervention Status "{k}" has growth rate {m}'.format(k=k,m=m))
+growth_rate_by_intervention['Unknown'] = growth_rate_by_intervention['No Intervention']
 
 
 def interventions_to_gr_by_date(
@@ -203,10 +210,10 @@ def interventions_to_gr_by_date(
     # Takes a list of interventions.
     # Returns a function that computes beta from t.
     if growth_rate_power is None:
-        growth_rate = INTERVENTION_INFECTION_GROWTH_RATE 
+        growth_rate = growth_rate_by_intervention
     else:
         growth_rate = {}
-        for k, gr in INTERVENTION_INFECTION_GROWTH_RATE.items():
+        for k, gr in growth_rate_by_intervention.items():
             gr = (1 + gr) ** growth_rate_power - 1
             growth_rate[k] = gr
     return {d: growth_rate[s] for d, s in zip(iv_dates, iv_strings)}
