@@ -154,6 +154,15 @@ class Model:
         return list(inbound-outbound)
 
 
+# Set up a default version of the model:
+model = Model(
+        None,
+        LATENT_PERIOD,
+        INFECTIOUS_PERIOD,
+        P_HOSPITAL, HOSPITAL_DURATION,
+        P_DEATH)
+
+
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
 population = load_population_data()
@@ -231,14 +240,6 @@ def gr_by_date_to_beta_fn(gr_by_date, zero_day):
         if t in t_to_beta: return t_to_beta[t]
     return beta
 
-
-# Set up a default version of the model:
-model = Model(
-        None,
-        LATENT_PERIOD,
-        INFECTIOUS_PERIOD,
-        P_HOSPITAL, HOSPITAL_DURATION,
-        P_DEATH)
 
 
 # Outputs:
