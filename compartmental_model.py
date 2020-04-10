@@ -40,9 +40,6 @@ P_DEATH = 0.14
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
-# Growth rates, used to calculate contact_rate a.k.a. beta(t):
-# These get calculated from the input data below.
-growth_rate_by_intervention = {}
 
 # Minimum number of deaths needed to tune gowth rates.
 empirical_growth_min_deaths = 100
@@ -158,6 +155,8 @@ class Model:
 
         Starts by using differential equation for deaths to infer hospitalizations.
         Continues backwards from there.
+
+        NOTE: Doesn't seem to work very well.
         """
         def d(xs):
             d = xs[1:]-xs[:-1]
@@ -166,7 +165,7 @@ class Model:
         H = d(D) * self.hospital_t / self.death_p
         I = d(H) * self.infectious_t / self.hospital_p
         E = (d(I) + (I / self.infectious_t)) * self.latent_t
-        beta = (d(E) + E / self.latent_t) / np.max(I, 0.1)
+        beta = (d(E) + E / self.latent_t) / np.maximum(I, 0.1)
             # The np.max prevents divisions by zero.
             # Note: for now we assume S~N here.
         return beta
@@ -186,8 +185,12 @@ model = Model(
 places = pickle.load(open('time_series.pkl', 'rb'))
 
 
+# Growth rates, used to calculate contact_rate.
+fixed_growth_by_inv = {}
+
 # Calculate Empirical Growth Rates:
 empirical_growths = collections.defaultdict(list)
+
 
 for k, ts in sorted(places.items()):
     N = ts.population
@@ -224,10 +227,32 @@ for k, ts in sorted(places.items()):
 
 for k, gs in sorted(empirical_growths.items()):
     m = np.median(gs)
-    growth_rate_by_intervention[k] = m
+    fixed_growth_by_inv[k] = m
     print('Intervention Status "{k}" has growth rate {m}'.format(k=k,m=m))
-growth_rate_by_intervention['Unknown'] = growth_rate_by_intervention['No Intervention']
+fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 
+growth_rate_by_intervention = fixed_growth_by_inv
+# TODO: use the code below to figure out better numbers.
+
+deaths_rel_to_lockdown = collections.defaultdict(list)
+for k, ts in sorted(places.items()):
+    if 'Lockdown' not in ts.interventions: continue
+    first_lockdown_ts_idx = ts.interventions.index('Lockdown')
+    first_lockdown_date = ts.intervention_dates[first_lockdown_ts_idx]
+    if first_lockdown_date not in ts.dates: continue
+    lockdown_idx = ts.dates.index(first_lockdown_date)
+    deaths_at_lockdown = ts.deaths[lockdown_idx]
+    if deaths_at_lockdown < 5: continue
+    for i, d in enumerate(ts.deaths):
+        deaths_rel_to_lockdown[i-lockdown_idx].append(d/deaths_at_lockdown)
+
+lockdown_death_trend = []
+for k, v in sorted(deaths_rel_to_lockdown.items()):
+    if k < 0: continue
+    if len(v) < 5: break
+    lockdown_death_trend.append(np.mean(v))
+#for i, g in enumerate(lockdown_death_trend):
+#    print("{i}->{g}".format(i=i,g=g))
 
 def interventions_to_gr_by_date(
         iv_dates, iv_strings, growth_rate_power=None):
