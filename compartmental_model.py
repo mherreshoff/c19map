@@ -184,18 +184,14 @@ model = Model(
 
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
-population = load_population_data()
-def iterate_places():
-    for k, ts in sorted(places.items()):
-        if k not in population: continue
-        N = population[k]
-        yield k, N, ts
 
 
 # Calculate Empirical Growth Rates:
 empirical_growths = collections.defaultdict(list)
 
-for k, N, ts in iterate_places():
+for k, ts in sorted(places.items()):
+    N = ts.population
+    if N is None: continue
     country = k[0]
     if country in tuned_countries: continue
 
@@ -295,7 +291,11 @@ world_deaths = np.zeros(len(history_dates))
 world_estimated_cases = np.zeros(len(history_dates))
 
 # Run the model forward for each of the places:
-for k, N, ts in iterate_places():
+
+for k, ts in sorted(places.items()):
+    N = ts.population
+    if N is None: continue
+
     present_date = ts.dates[-1]
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)

@@ -7,6 +7,7 @@ class TimeSeries:
         self.dates = dates
         self.latitude = None
         self.longitude = None
+        self.population = None
         self.confirmed = np.zeros(len(dates), dtype=int)
         self.deaths = np.zeros(len(dates), dtype=int)
         self.recovered = np.zeros(len(dates), dtype=int)

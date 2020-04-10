@@ -92,6 +92,9 @@ print("Fetching latest intervention data")
 intervention_dates, interventions = fetch_intervention_data()
 intervention_unknown = ['Unknown' for d in intervention_dates]
 
+# Read popultion data:
+population = load_population_data()
+
 # Read our JHU data, and reconcile it together:
 places = {}
 interventions_recorded = set()
@@ -124,6 +127,8 @@ for url, file_name, day in downloads:
 
         if p not in places:
             places[p] = TimeSeries(dates)
+            if p in population:
+                places[p].population = population[p]
             places[p].intervention_dates = intervention_dates
             if p in interventions:
                 places[p].interventions = interventions[p]
