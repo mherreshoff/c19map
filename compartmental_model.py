@@ -67,7 +67,7 @@ def seir_beta_to_growth_rate(beta):
     # Note: this matrix is the linearized version of the SEIR diffeq
     # where S~N for just E and I.
     w, v = np.linalg.eig(m)
-    return np.exp(np.max(w)) - 1
+    return np.exp(np.max(w))
 
 
 @functools.lru_cache(maxsize=10000)
@@ -75,7 +75,7 @@ def seir_growth_rate_to_beta(igr):
     sigma = 1/LATENT_PERIOD
     gamma = 1/INFECTIOUS_PERIOD
     beta = sp.Symbol('beta')
-    target_eigenval = np.log(1 + igr)
+    target_eigenval = np.log(igr)
     m = sp.Matrix([
         [-sigma, beta],
         [sigma, -gamma]])
@@ -111,7 +111,7 @@ class Model:
             ('E','I', 'E', 1/self.latent_t),
             ('I','H', 'I', (1/self.infectious_t)*self.hospital_p),
             ('I','R', 'I', (1/self.infectious_t)*(1-self.hospital_p)),
-            ('H','D', 'H', (1/self.hospital_t)*model.death_p),
+            ('H','D', 'H', (1/self.hospital_t)*self.death_p),
             ('H','R', 'H', (1/self.hospital_t)*(1-self.death_p))]
         nv = len(Model.variables)
         m = np.zeros((nv, nv))
@@ -125,7 +125,7 @@ class Model:
 
     def equilibrium(self, t=0):
         # Find the equilibrium state:
-        m = model.companion_matrix(t)
+        m = self.companion_matrix(t)
         m = m[1:,1:]
             # Get rid of the 'S' variable.  Equilibrium only makes sense if we're
             # assuming an infinite population to expand into.
@@ -145,13 +145,32 @@ class Model:
             ('E','I', E/self.latent_t),
             ('I','H', (I/self.infectious_t)*self.hospital_p),
             ('I','R', (I/self.infectious_t)*(1-self.hospital_p)),
-            ('H','D', (H/self.hospital_t)*model.death_p),
+            ('H','D', (H/self.hospital_t)*self.death_p),
             ('H','R', (H/self.hospital_t)*(1-self.death_p))]
         inbound = np.array([
             sum(x for s,t,x in flows if t==v) for v in Model.variables])
         outbound = np.array([
             sum(x for s,t,x in flows if s==v) for v in Model.variables])
         return list(inbound-outbound)
+
+    def deaths_to_betas(self, D):
+        """Infers a time series of betas using a time series of deaths.
+
+        Starts by using differential equation for deaths to infer hospitalizations.
+        Continues backwards from there.
+        """
+        def d(xs):
+            d = xs[1:]-xs[:-1]
+            d = np.pad(d, (1,1), 'edge')
+            return (d[:-1]+d[1:])/2.0
+        H = d(D) * self.hospital_t / self.death_p
+        I = d(H) * self.infectious_t / self.hospital_p
+        E = (d(I) + (I / self.infectious_t)) * self.latent_t
+        beta = (d(E) + E / self.latent_t) / np.max(I, 0.1)
+            # The np.max prevents divisions by zero.
+            # Note: for now we assume S~N here.
+        return beta
+
 
 
 # Set up a default version of the model:
@@ -209,7 +228,7 @@ for k, N, ts in iterate_places():
 
 for k, gs in sorted(empirical_growths.items()):
     m = np.median(gs)
-    growth_rate_by_intervention[k] = m - 1.0
+    growth_rate_by_intervention[k] = m
     print('Intervention Status "{k}" has growth rate {m}'.format(k=k,m=m))
 growth_rate_by_intervention['Unknown'] = growth_rate_by_intervention['No Intervention']
 
@@ -223,8 +242,7 @@ def interventions_to_gr_by_date(
     else:
         growth_rate = {}
         for k, gr in growth_rate_by_intervention.items():
-            gr = (1 + gr) ** growth_rate_power - 1
-            growth_rate[k] = gr
+            growth_rate[k] = gr ** growth_rate_power
     return {d: growth_rate[s] for d, s in zip(iv_dates, iv_strings)}
 
 
