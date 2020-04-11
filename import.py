@@ -21,7 +21,8 @@ parser.add_argument("--interventions_sheet", default="Interventions")
 parser.add_argument("--sheets_csv_fetcher", default=(
     "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&sheet={sheet}"))
 parser.add_argument("--JHU_url_format", default=(
-   'https://raw.githack.com/CSSEGISandData/COVID-19/master'+
+    'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master'+
+#   'https://raw.githack.com/CSSEGISandData/COVID-19/master'+
    '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
 data_directory = 'JHU_data'
 args = parser.parse_args()
