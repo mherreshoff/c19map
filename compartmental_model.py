@@ -51,8 +51,11 @@ empirical_growth_max_pop_frac = 0.03
 # growth data to represent it.
 empirical_growth_inv_days = 20
 
+# Set to True to see a graph of how our lockdown betas fit the data.
+DEBUG_LOCKDOWN_FIT = False
+
+# The countries we treat specially
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
-#tuned_countries = set()
 
 @functools.lru_cache(maxsize=10000)
 def seir_beta_to_growth_rate(beta):
@@ -231,9 +234,10 @@ for k, gs in sorted(empirical_growths.items()):
     print('Intervention Status "{k}" has growth rate {m}'.format(k=k,m=m))
 fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 
-growth_rate_by_intervention = fixed_growth_by_inv
-# TODO: use the code below to figure out better numbers.
-
+beta_by_intervention = {}
+for k, v in fixed_growth_by_inv.items():
+    beta = seir_growth_rate_to_beta(v)
+    beta_by_intervention[k] = lambda t: beta
 
 deaths_rel_to_lockdown = collections.defaultdict(list)
 for k, ts in sorted(places.items()):
@@ -253,16 +257,22 @@ for k, v in sorted(deaths_rel_to_lockdown.items()):
     if len(v) < 5: break
     lockdown_death_trend.append(np.mean(v))
 
-model.contact_rate = lambda t: fixed_growth_by_inv['No Intervention']
+#default_beta = seir_growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
+default_beta = seir_growth_rate_to_beta(1.2)
+model.contact_rate = lambda t: default_beta
 no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
 ts = np.arange(len(lockdown_death_trend))
 
 
-def lockdown_curve_fit_traj(params):
-    def contact_rate(t):
+def lockdown_curve_beta(params):
+    def beta(t):
         return np.interp(t, [0, 14], params)
-    model.contact_rate = contact_rate
+    return beta
+
+
+def lockdown_curve_fit_traj(params):
+    model.contact_rate = lockdown_curve_beta(params)
     trajectories = odeint(lambda *a: model.derivative(*a), y0, ts)
     return trajectories
 
@@ -273,57 +283,58 @@ def lockdown_curve_fit(params):
     return diff
 
 
-beta_init = seir_growth_rate_to_beta(1.2)
-params = scipy.optimize.minimize(
-        lockdown_curve_fit, np.array([beta_init]*2, dtype=float)).x
+lockdown_curve_params = scipy.optimize.minimize(
+        lockdown_curve_fit,
+        np.array([seir_growth_rate_to_beta(1.2)]*2, dtype=float)).x
+
 print()
-for i, b in enumerate(params):
+for i, b in enumerate(lockdown_curve_params):
     print("    beta{i} = {b} --> growth rate = {g}".format(
         i=i, b=b, g=seir_beta_to_growth_rate(b)))
 
-
-trajectories = lockdown_curve_fit_traj(params)
-fig = plt.figure(facecolor='w')
-ax = fig.add_subplot(111, axisbelow=True)
-
-ax.set_title("Places post-intervention")
-ax.set_xlabel('Days (0 is intervention)')
-ax.set_ylabel('People (log)')
-for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
-    ax.semilogy(ts, curve, label=var)
-ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
-legend = ax.legend()
-legend.get_frame().set_alpha(0.5)
-plt.show()
+# TODO: fix the optimization.
+# beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
 
 
-sys.exit(0)
+if DEBUG_LOCKDOWN_FIT:
+    trajectories = lockdown_curve_fit_traj(lockdown_curve_params)
+    fig = plt.figure(facecolor='w')
+    ax = fig.add_subplot(111, axisbelow=True)
 
-def interventions_to_gr_by_date(
-        iv_dates, iv_strings, growth_rate_power=None):
-    # Takes a list of interventions.
-    # Returns a function that computes beta from t.
-    if growth_rate_power is None:
-        growth_rate = growth_rate_by_intervention
-    else:
-        growth_rate = {}
-        for k, gr in growth_rate_by_intervention.items():
-            growth_rate[k] = gr ** growth_rate_power
-    return {d: growth_rate[s] for d, s in zip(iv_dates, iv_strings)}
+    ax.set_title("Places post-intervention")
+    ax.set_xlabel('Days (0 is intervention)')
+    ax.set_ylabel('People (log)')
+    for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
+        ax.semilogy(ts, curve, label=var)
+    ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
+    legend = ax.legend()
+    legend.get_frame().set_alpha(0.5)
+    plt.show()
 
 
-def gr_by_date_to_beta_fn(gr_by_date, zero_day):
-    t_to_beta = {(d-zero_day).days: seir_growth_rate_to_beta(g)
-            for d, g in gr_by_date.items()}
-    lowest = min(t_to_beta.keys())
-    highest = max(t_to_beta.keys())
-    def beta(t):
-        t = int(np.floor(t))
-        if t < lowest: return t_to_beta[lowest]
-        if t > highest: return t_to_beta[highest]
-        if t in t_to_beta: return t_to_beta[t]
-    return beta
-
+def interventions_to_beta_fn(
+        iv_dates, iv_strings, zero_day, growth_rate_power=None):
+    beta_starts = []
+    prev_s = ''
+    for d, s in zip(iv_dates, iv_strings):
+        if s != prev_s:
+            beta_starts.append(
+                    ((d-zero_day).days,
+                        beta_by_intervention[s]))
+            prev_s = s
+    beta_starts.sort(reverse=True)
+    def beta_fn(t):
+        for s, f in beta_starts:
+            if t >= s:
+                b = f(t - s)
+                break
+        else:
+            s, f = beta_starts[-1]
+            b = f(0)
+        if growth_rate_power is None: return b
+        return seir_growth_rate_to_beta(
+                seir_beta_to_growth_rate(b)**growth_rate_power)
+    return beta_fn
 
 
 # Outputs:
@@ -378,9 +389,8 @@ for k, ts in sorted(places.items()):
         continue
     start_idx = nz_deaths[0]
     fit_length = len(ts.dates)-start_idx
-    gr_by_date = interventions_to_gr_by_date(
-            ts.intervention_dates, ts.interventions)
-    model.contact_rate = gr_by_date_to_beta_fn(gr_by_date, present_date)
+    model.contact_rate = interventions_to_beta_fn(
+            ts.intervention_dates, ts.interventions, present_date)
     growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
 
     t = np.arange(fit_length) - (fit_length+1)
@@ -397,9 +407,8 @@ for k, ts in sorted(places.items()):
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
-        gr_by_date = interventions_to_gr_by_date(
-                ts.intervention_dates, ts.interventions, gr_pow)
-        model.contact_rate = gr_by_date_to_beta_fn(gr_by_date, present_date)
+        model.contact_rate = interventions_to_beta_fn(
+            ts.intervention_dates, ts.interventions, present_date, gr_pow)
         growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
         # Recompute the equilibrium since we've altered the model.
     else:
@@ -443,7 +452,9 @@ for k, ts in sorted(places.items()):
     infected_w.writerow(row_start + [latest_estimate])
 
     # Time Sequence for Growth Rates:
-    growth_rates = [gr_by_date[d] for d in intervention_dates]
+    growth_rates = [
+            seir_beta_to_growth_rate(model.contact_rate((d-present_date).days))
+            for d in intervention_dates]
     growth_rate_w.writerow(row_start + growth_rates)
 
     # Graphs:
