@@ -131,7 +131,7 @@ class Model:
         growth_rate = np.exp(w[max_eig_id])
         state = v[:,max_eig_id]
         state = np.concatenate([[0], state])  # Add back S row.
-        state /= state[5] # Normalize by deaths.
+        state /= state[Model.variables.index('D')] # Normalize by deaths.
         return growth_rate, state
 
     def derivative(self, y, t):
@@ -252,55 +252,50 @@ for k, v in sorted(deaths_rel_to_lockdown.items()):
     if k < 0: continue
     if len(v) < 5: break
     lockdown_death_trend.append(np.mean(v))
-#for i, g in enumerate(lockdown_death_trend):
-#    print("{i}->{g}".format(i=i,g=g))
-
 
 model.contact_rate = lambda t: fixed_growth_by_inv['No Intervention']
 no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
 ts = np.arange(len(lockdown_death_trend))
 
+
 def lockdown_curve_fit_traj(params):
     def contact_rate(t):
         return np.interp(t, [0, 14], params)
     model.contact_rate = contact_rate
     trajectories = odeint(lambda *a: model.derivative(*a), y0, ts)
-    S, E, I, H, D, R = trajectories.T
-    return D
+    return trajectories
+
 
 def lockdown_curve_fit(params):
-    D = lockdown_curve_fit_traj(params)
+    S, E, I, H, D, R = lockdown_curve_fit_traj(params).T
     diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
-#   print()
-#   print("b0={b0} b1={b1} b2={b2}".format(b0=b0,b1=b1,b2=b2))
-#   print("diff =", diff)
     return diff
 
-for method in [
-        "Nelder-Mead",
-        "Powell",
-        "CG",
-        "BFGS",
-        "Newton-CG",
-        "L-BFGS-B",
-        "TNC",
-        "COBYLA",
-        "SLSQP",
-        "trust-constr",
-        "dogleg",
-        "trust-ncg",
-        "trust-exact",
-        "trust-krylov"]:
-    beta_init = seir_growth_rate_to_beta(1.2)
-    params = scipy.optimize.minimize(
-            lockdown_curve_fit, [beta_init, beta_init],
-            method="Nelder-Mead").x
-    print()
-    print("Method:", method)
-    for i, b in enumerate(params):
-        print("    beta{i} = {b} --> growth rate = {g}".format(
-            i=i, b=b, g=seir_beta_to_growth_rate(b)))
+
+beta_init = seir_growth_rate_to_beta(1.2)
+params = scipy.optimize.minimize(
+        lockdown_curve_fit, np.array([beta_init]*2, dtype=float)).x
+print()
+for i, b in enumerate(params):
+    print("    beta{i} = {b} --> growth rate = {g}".format(
+        i=i, b=b, g=seir_beta_to_growth_rate(b)))
+
+
+trajectories = lockdown_curve_fit_traj(params)
+fig = plt.figure(facecolor='w')
+ax = fig.add_subplot(111, axisbelow=True)
+
+ax.set_title("Places post-intervention")
+ax.set_xlabel('Days (0 is intervention)')
+ax.set_ylabel('People (log)')
+for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
+    ax.semilogy(ts, curve, label=var)
+ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
+legend = ax.legend()
+legend.get_frame().set_alpha(0.5)
+plt.show()
+
 
 sys.exit(0)
 
