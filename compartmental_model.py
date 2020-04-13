@@ -356,6 +356,26 @@ headers += ["%d/%d/%d" % (d.month, d.day, d.year%100)
         for d in intervention_dates]
 growth_rate_w.writerow(headers)
 
+
+output_comprehensive_series_w = csv.writer(
+        open('output_comprehensive_series.csv', 'w'))
+output_comprehensive_snapshot_w = csv.writer(
+        open('output_comprehensive_snapshot.csv', 'w'))
+headers = ["Region ID", "Date", "Country/Region", "Province/State",
+        "Latitude", "Longitude", "Intervention Status", "Population"]
+stat_columns = ["Reported Confirmed","Reported Deaths",
+        "Susceptible","Exposed","Infectious","Hospitalized","Dead","Recovered",
+        "Active","Cumulative Infected"]
+headers += stat_columns
+headers += [s + " (per 10k)" for s in stat_columns]
+headers += ["Last Updated", "Message", "Notes"]
+output_comprehensive_series_w.writerow(headers)
+output_comprehensive_snapshot_w.writerow(headers)
+sys.exit()
+
+output_comprehensive_series_w.writerow(headers)
+output_comprehensive_snapshot_w.writerow(headers)
+
 # TODO: add flag for whether graphs happen.
 graph_output_dir = 'graphs'
 if os.path.exists(graph_output_dir):
