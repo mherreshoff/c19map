@@ -18,6 +18,9 @@ import sys
 from common import *
 
 
+time_program_began = datetime.datetime.now().isoformat()
+
+
 # Model parameters:
 LATENT_PERIOD = 3.5
     # 1/sigma - The average length of time between contracting the disease
@@ -56,6 +59,7 @@ DEBUG_LOCKDOWN_FIT = False
 
 # The countries we treat specially
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
+
 
 @functools.lru_cache(maxsize=10000)
 def seir_beta_to_growth_rate(beta):
@@ -370,6 +374,7 @@ headers += stat_columns
 headers += [s + " (per 10k)" for s in stat_columns]
 headers += ["Last Updated", "Message", "Notes"]
 output_comprehensive_series_w.writerow(headers)
+headers[2] = "Snapshot Date"
 output_comprehensive_snapshot_w.writerow(headers)
 
 
@@ -459,20 +464,57 @@ for k, ts in sorted(places.items()):
     world_deaths += ts.deaths
     world_estimated_cases += estimated_cases[:len(ts.dates)]
 
-    # Variables:
+    # Output all variables:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
     all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,days_to_present])))
 
-    # Estimation:
+    # Output Estimation:
     latest_estimate = np.round(estimated_cases[len(ts.dates)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
 
-    # Time Sequence for Growth Rates:
+    # Output Time Sequence for Growth Rates:
     growth_rates = [
             seir_beta_to_growth_rate(model.contact_rate((d-present_date).days))
             for d in intervention_dates]
     growth_rate_w.writerow(row_start + growth_rates)
+
+    # Comprehensive output CSV:
+    region_id = ' - '.join(s for s in k if s != '')
+    country, province, district = k
+    for idx, d in enumerate(ts.dates):
+        if d in ts.intervention_dates:
+            intervention = ts.interventions[ts.intervention_dates.index(d)]
+        elif d < ts.intervention_dates[0]:
+            intervention = ts.interventions[0]
+        elif d > ts.intervention_dates[-1]:
+            intervention = ts.interventions[-1]
+        else: assert False, "Couldn't find intervention."
+
+        initial_fields = [region_id, d.isoformat(), country, province,
+                ts.latitude, ts.longitude, intervention, ts.population]
+        stat_fields = [ts.confirmed[idx], ts.deaths[idx]]
+        if idx >= start_idx:
+            sim_idx = idx-start_idx
+            stat_fields += list(trajectories[sim_idx])
+            active_infections = I[sim_idx]+E[sim_idx]+H[sim_idx]
+            cumulative_infections = active_infections + R[sim_idx] + D[sim_idx]
+            stat_fields += [active_infections, cumulative_infections]
+        else:
+            stat_fields += ['']*8
+        def per10k(x):
+            if x == '': return ''
+            return 10000*x/ts.population
+        def cleanup(x):
+            if x == '': return ''
+            return np.round(x, 2)
+        stat_fields += [per10k(s) for s in stat_fields]
+        stat_fields = [cleanup(s) for s in stat_fields]
+        misc_fields = [time_program_began, '', '']
+        all_fields = initial_fields + stat_fields + misc_fields
+        output_comprehensive_series_w.writerow(all_fields)
+        if d == present_date:
+            output_comprehensive_snapshot_w.writerow(all_fields)
 
     # Graphs:
     fig = plt.figure(facecolor='w')
