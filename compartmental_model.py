@@ -371,10 +371,7 @@ headers += [s + " (per 10k)" for s in stat_columns]
 headers += ["Last Updated", "Message", "Notes"]
 output_comprehensive_series_w.writerow(headers)
 output_comprehensive_snapshot_w.writerow(headers)
-sys.exit()
 
-output_comprehensive_series_w.writerow(headers)
-output_comprehensive_snapshot_w.writerow(headers)
 
 # TODO: add flag for whether graphs happen.
 graph_output_dir = 'graphs'
