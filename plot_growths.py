@@ -35,7 +35,6 @@ for country in sorted(intervention_date.keys()):
 
 plots = []
 
-
 for k, iv_date in sorted(intervention_date.items()):
     place_str = ": ".join([s for s in k if s != ''])
     print("place_str:", place_str)
@@ -60,18 +59,15 @@ for label,xs,ys in plots:
 average_points = [(x,np.average(all_vals[x])) for x in sorted(all_vals.keys())]
 average_xs = np.array([p[0] for p in average_points])
 average_ys = np.array([p[1] for p in average_points])
-plots.append(('Average', average_xs, average_ys))
 
 fig = plt.figure(facecolor='w')
 ax = fig.add_subplot(111, axisbelow=True)
-for label,xs,ys in plots:
-    color = 'b'
-    if label=='Average': color = 'r'
-    ax.plot(xs, ys, color, alpha=0.5, lw=2, label=label)
-    ax.set_xlabel('Days (0=intervention)')
-    ax.set_ylabel('Growth in deaths')
-    ax.yaxis.set_tick_params(length=0)
+ax.set_title("Death Growths After Intervention")
+ax.set_xlabel('Days (0=intervention)')
+ax.set_ylabel('Growth in deaths')
 ax.xaxis.set_tick_params(length=0)
+xs = sorted(all_vals.keys())
+ax.boxplot([all_vals[x] for x in xs], positions=xs)
 ax.grid(b=True, which='major', c='w', lw=2, ls='-')
 legend = ax.legend()
 legend.get_frame().set_alpha(0.5)
