@@ -34,18 +34,14 @@ else: end_date = datetime.date.fromisoformat(args.end)
 
 # Download Johns Hopkins Data:
 downloads = []
-day_count = (end_date - start_date).days + 1;
-dates = []
+dates = list(date_range_inclusive(start_date, end_date))
 
-if not os.path.exists(data_directory): os.makedirs(data_directory)
-
-for n in range(day_count):
-    d = start_date + datetime.timedelta(n)
-    dates.append(d)
+for n, d in enumerate(dates):
     url = d.strftime(args.JHU_url_format)
     file_path = os.path.join(data_directory, d.isoformat() + ".csv")
     downloads.append([url, file_path, n])
 
+if not os.path.exists(data_directory): os.makedirs(data_directory)
 for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print("Downloading "+file_path+" from: "+url)
@@ -127,7 +123,7 @@ for url, file_name, day in downloads:
         if p is None: continue
 
         if p not in places:
-            places[p] = TimeSeries(dates)
+            places[p] = KnownData(dates)
             if p in population:
                 places[p].population = population[p]
             places[p].intervention_dates = intervention_dates
@@ -153,7 +149,7 @@ for p in sorted(interventions.keys()):
 for p in sorted(places.keys()):
     if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
-        if state not in places: places[state] = TimeSeries(dates)
+        if state not in places: places[state] = KnownData(dates)
         places[state].confirmed += places[p].confirmed
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered

@@ -1,8 +1,68 @@
 import csv
+import datetime
 import numpy as np
 
 
+def date_range_inclusive(date, end_date, delta=None):
+    if delta is None: delta = datetime.timedelta(1)
+    while date <= end_date:
+        yield date
+        date += delta
+
+
 class TimeSeries:
+    def __init__(self, start_date, array, extend_ends=False):
+        self._start_date = start_date
+        self._array = array
+        self._extend_ends = extend_ends
+
+    def start_date(self):
+        return self._start_date
+
+    def date(self, n):
+        return self._start_date + datetime.timedelta(n)
+
+    def last_date(self):
+        return self.date(len(self._array)-1)
+
+    def end_date(self):
+        return self.date(len(self._array))
+
+    def dates(self):
+        for i, _ in enumerate(self._array):
+            yield self.date(i)
+
+    def index_to_number(self, idx, extend=False):
+        if isinstance(idx, datetime.date):
+            n = (idx - self._start_date).days
+        if n < 0:
+            if extend: return 0
+            else: return None
+        if n >= len(self.array):
+            if extend: return len(self.array)-1
+            else: return None
+        return idx
+
+    def __getitem__(self, idx):
+        n = self.index_to_number(idx, self._extend_ends)
+        return self._array[n]
+
+    def __setitem__(self, idx, val):
+        n = self.index_to_number(idx)
+        self._array[n] = val
+
+    def __iter__(self):
+        return iter(self._array)
+
+
+
+class KnownData:
+    """All the data we know about a place:
+
+    - Johns Hopkins time series for deaths, confirmed, and recovered
+    - Population, latitude, and longitude.
+    - Intervention time series.
+    """
     def __init__(self, dates):
         self.dates = dates
         self.latitude = None
