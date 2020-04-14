@@ -374,7 +374,7 @@ headers += stat_columns
 headers += [s + " (per 10k)" for s in stat_columns]
 headers += ["Last Updated", "Message", "Notes"]
 output_comprehensive_series_w.writerow(headers)
-headers[2] = "Snapshot Date"
+headers[1] = "Snapshot Date"
 output_comprehensive_snapshot_w.writerow(headers)
 
 
