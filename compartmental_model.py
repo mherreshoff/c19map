@@ -217,7 +217,8 @@ for k, ts in sorted(places.items()):
             stable_dates.add(inv_d)
 
     empirical_growths_here = collections.defaultdict(list)
-    for date, d, nd in zip(ts.dates, ts.deaths, ts.deaths[1:]):
+    for date, d, nd in zip(
+            ts.deaths.dates(), ts.deaths.array(), ts.deaths.array()[1:]):
         if date not in stable_dates: continue
         if d < empirical_growth_min_deaths: continue
         if d > N*empirical_growth_max_pop_frac: continue
@@ -244,9 +245,9 @@ for k, ts in sorted(places.items()):
     if 'Lockdown' not in ts.interventions.array(): continue
     first_lockdown_ts_idx = ts.interventions.array().index('Lockdown')
     first_lockdown_date = ts.interventions.date(first_lockdown_ts_idx)
-    if first_lockdown_date not in ts.dates: continue
-    lockdown_idx = ts.dates.index(first_lockdown_date)
-    deaths_at_lockdown = ts.deaths[lockdown_idx]
+    if first_lockdown_date not in ts.deaths.dates(): continue
+    lockdown_idx = ts.deaths.date_to_position(first_lockdown_date)
+    deaths_at_lockdown = ts.deaths[first_lockdown_date]
     if deaths_at_lockdown < 5: continue
     for i, d in enumerate(ts.deaths):
         deaths_rel_to_lockdown[i-lockdown_idx].append(d/deaths_at_lockdown)
@@ -386,7 +387,7 @@ graph_days_forecast = 60  #TODO: flag.
   # How many days into the future do we simulate?
 
 # Totals: for the historytable output.
-history_dates = list(places.values())[0].dates
+history_dates = list(list(places.values())[0].deaths.dates())
 world_confirmed = np.zeros(len(history_dates))
 world_deaths = np.zeros(len(history_dates))
 world_estimated_cases = np.zeros(len(history_dates))
@@ -397,7 +398,7 @@ for k, ts in sorted(places.items()):
     N = ts.population
     if N is None: continue
 
-    present_date = ts.dates[-1]
+    present_date = ts.deaths.last_date()
     place_s = ' - '.join([s for s in k if s != ''])
     print("Place =",place_s)
 
@@ -408,7 +409,7 @@ for k, ts in sorted(places.items()):
         print("No deaths recorded, skipping: ", place_s)
         continue
     start_idx = nz_deaths[0]
-    fit_length = len(ts.dates)-start_idx
+    fit_length = len(ts.deaths)-start_idx
     model.contact_rate = interventions_to_beta_fn(
             ts.interventions, present_date)
     growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
@@ -436,8 +437,8 @@ for k, ts in sorted(places.items()):
         state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
         gr_pow = None
 
-    present_date = ts.dates[-1]
-    days_to_present = len(ts.dates) - 1 - start_idx
+    present_date = ts.deaths.last_date()
+    days_to_present = len(ts.deaths) - 1 - start_idx
     days_simulation = days_to_present + graph_days_forecast + 1
     t = np.arange(days_simulation) - days_to_present
     
@@ -460,14 +461,14 @@ for k, ts in sorted(places.items()):
     # Update world history table:
     world_confirmed += ts.confirmed
     world_deaths += ts.deaths
-    world_estimated_cases += estimated_cases[:len(ts.dates)]
+    world_estimated_cases += estimated_cases[:len(ts.deaths)]
 
     # Output all variables:
     row_start = [k[0], k[1], ts.latitude, ts.longitude]
     all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,days_to_present])))
 
     # Output Estimation:
-    latest_estimate = np.round(estimated_cases[len(ts.dates)-1], -3)
+    latest_estimate = np.round(estimated_cases[len(ts.deaths)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
 
@@ -487,8 +488,8 @@ for k, ts in sorted(places.items()):
     country, province, district = k
     prev_jhu_fields = None
     prev_estimated_fields = None
-    for idx, d in enumerate(ts.dates):
-        intervention = ts.interventions[d]
+    for idx, d in enumerate(ts.deaths.dates()):
+        intervention = ts.interventions.extrapolate(d)
 
         initial_fields = [region_id, d.isoformat(),
                 display_name, country, province,

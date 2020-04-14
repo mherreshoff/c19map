@@ -13,7 +13,7 @@ from common import *
 
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
-parser.add_argument("--first", default="2020-01-22")
+parser.add_argument("--start", default="2020-01-22")
 parser.add_argument("--last", default="today")
 parser.add_argument("--interventions_doc", default="1Rl3uhYkKfZiYiiRyJEl7R5Xay2HNT20R1X1j1nDCnd8")
 parser.add_argument("--interventions_sheet", default="Interventions")
@@ -26,15 +26,15 @@ parser.add_argument("--JHU_url_format", default=(
 parser.add_argument('--JHU_data_dir', default='JHU_data')
 args = parser.parse_args()
 
-first_date = parse_date(args.first)
-assert first_date, "Couldn't parse date: " + args.first
+start_date = parse_date(args.start)
+assert start_date, "Couldn't parse date: " + args.start
 last_date = parse_date(args.last)
 assert last_date, "Couldn't parse date: " + args.last
 
 
 # Download Johns Hopkins Data:
 downloads = []
-dates = list(date_range_inclusive(first_date, last_date))
+dates = list(date_range_inclusive(start_date, last_date))
 
 for n, d in enumerate(dates):
     url = d.strftime(args.JHU_url_format)
@@ -79,9 +79,8 @@ def fetch_intervention_data():
         if p in interventions:
             print("Duplicate rows for place ",p)
         ivs = [row[c] for c in date_cols]
-        interventions[p] = TimeSeries(dates[0], ivs, extend_ends=True)
-    intervention_unknown = TimeSeries(dates[0], ['Unknown' for d in dates],
-            extend_ends=True)
+        interventions[p] = TimeSeries(dates[0], ivs)
+    intervention_unknown = TimeSeries(dates[0], ['Unknown' for d in dates])
     return intervention_unknown, interventions
 
 
@@ -157,13 +156,14 @@ france_k = ('France', 'France', '')
 french_polynesia_k = ('France', 'French Polynesia', '')
 france = places[france_k]
 french_polynesia = places[french_polynesia_k]
-idx = france.dates.index(datetime.date(2020, 3, 23))
+idx = datetime.date(2020, 3, 23)
+prev_idx = idx - datetime.timedelta(1)
 france.confirmed[idx] = french_polynesia.confirmed[idx]
 france.deaths[idx] = french_polynesia.deaths[idx]
 france.recovered[idx] = french_polynesia.recovered[idx]
-french_polynesia.confirmed[idx] = french_polynesia.confirmed[idx-1]
-french_polynesia.deaths[idx] = french_polynesia.deaths[idx-1]
-french_polynesia.recovered[idx] = french_polynesia.recovered[idx-1]
+french_polynesia.confirmed[idx] = french_polynesia.confirmed[prev_idx]
+french_polynesia.deaths[idx] = french_polynesia.deaths[prev_idx]
+french_polynesia.recovered[idx] = french_polynesia.recovered[prev_idx]
 
 
 # Output the CSVs:

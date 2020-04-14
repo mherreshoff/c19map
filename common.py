@@ -22,10 +22,9 @@ def maybe_makedir(dirname):
 
 
 class TimeSeries:
-    def __init__(self, start_date, array, extend_ends=False):
+    def __init__(self, start_date, array):
         self._start_date = start_date
         self._array = array
-        self._extend_ends = extend_ends
 
     def array(self):
         return self._array
@@ -39,36 +38,59 @@ class TimeSeries:
     def last_date(self):
         return self.date(len(self._array)-1)
 
-    def end_date(self):
+    def stop_date(self):
         return self.date(len(self._array))
 
     def dates(self):
         for i, _ in enumerate(self._array):
             yield self.date(i)
 
-    def index_to_number(self, idx, extend=False):
+    def date_to_position(self, date, extrapolate=False, cutoff=True):
+        n = (date - self._start_date).days
+        if n < 0:
+            if extrapolate: return 0
+            elif cutoff: return None
+            else: return n
+        if n >= len(self._array):
+            if extrapolate: return len(self._array)-1
+            elif cutoff: return None
+            else: return n
+        return n
+
+    def index_to_position(self, idx, extrapolate=False, cutoff=True):
         if isinstance(idx, datetime.date):
-            n = (idx - self._start_date).days
-            if n < 0:
-                if extend: return 0
-                else: return None
-            if n >= len(self._array):
-                if extend: return len(self._array)-1
-                else: return None
+            n = self.date_to_position(idx, extrapolate=extrapolate, cutoff=cutoff)
+        elif isinstance(idx, slice):
+            start = self.index_to_position(idx.start, extrapolate=False, cutoff=False)
+            stop = self.index_to_position(idx.stop, extrapolate=False, cutoff=False)
+            step = idx.step  # support timedelta here?
+            n = slice(start, stop, step)
         else:
             n = idx
         return n
 
+    def extrapolate(self, date):
+        n = self.date_to_position(date, extrapolate=True)
+        return self._array[n]
+
+    def __len__(self):
+        return len(self._array)
+
     def __getitem__(self, idx):
-        n = self.index_to_number(idx, self._extend_ends)
+        n = self.index_to_position(idx)
         return self._array[n]
 
     def __setitem__(self, idx, val):
-        n = self.index_to_number(idx)
+        n = self.index_to_position(idx)
         self._array[n] = val
 
     def __iter__(self):
         return iter(self._array)
+
+    def __add__(self, other):
+        assert self._start_date == other._start_date
+        assert len(self._array) == len(other._array)
+        return TimeSeries(self._start_date, self._array + other._array)
 
     def items(self):
         for i, x in enumerate(self._array):
@@ -84,13 +106,13 @@ class KnownData:
     - Intervention time series.
     """
     def __init__(self, dates):
-        self.dates = dates
         self.latitude = None
         self.longitude = None
         self.population = None
-        self.confirmed = np.zeros(len(dates), dtype=int)
-        self.deaths = np.zeros(len(dates), dtype=int)
-        self.recovered = np.zeros(len(dates), dtype=int)
+
+        self.confirmed = TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
+        self.deaths = TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
+        self.recovered =  TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
 
         self.interventions = None
 
