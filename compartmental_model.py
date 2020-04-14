@@ -261,8 +261,7 @@ for k, v in sorted(deaths_rel_to_lockdown.items()):
     if len(v) < 5: break
     lockdown_death_trend.append(np.mean(v))
 
-#default_beta = seir_growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
-default_beta = seir_growth_rate_to_beta(1.2)
+default_beta = seir_growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
 model.contact_rate = lambda t: default_beta
 no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
@@ -341,7 +340,7 @@ def interventions_to_beta_fn(
     return beta_fn
 
 
-# Outputs:
+# Initialize CSV Outputs:
 all_vars_w = csv.writer(open('output_all_vars.csv', 'w'))
 all_vars_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long"] +
@@ -365,12 +364,16 @@ output_comprehensive_series_w = csv.writer(
         open('output_comprehensive_series.csv', 'w'))
 output_comprehensive_snapshot_w = csv.writer(
         open('output_comprehensive_snapshot.csv', 'w'))
-headers = ["Region ID", "Date", "Country/Region", "Province/State",
-        "Latitude", "Longitude", "Intervention Status", "Population"]
+headers = ["Region ID", "Date",
+        "Display Name", "Country/Region", "Province/State",
+        "Latitude", "Longitude",
+        "Intervention Status",
+        "Population"]
 stat_columns = ["Reported Confirmed","Reported Deaths",
         "Susceptible","Exposed","Infectious","Hospitalized","Dead","Recovered",
         "Active","Cumulative Infected"]
 headers += stat_columns
+headers += [s + " (delta)" for s in stat_columns]
 headers += [s + " (per 10k)" for s in stat_columns]
 headers += ["Last Updated", "Message", "Notes"]
 output_comprehensive_series_w.writerow(headers)
@@ -481,7 +484,14 @@ for k, ts in sorted(places.items()):
 
     # Comprehensive output CSV:
     region_id = ' - '.join(s for s in k if s != '')
+    def place_display_name(place):
+        parts = list(collections.OrderedDict.fromkeys(place))
+        return ' - '.join(p for p in parts if p != '')
+    display_name = place_display_name(k)
+
     country, province, district = k
+    prev_jhu_fields = None
+    prev_estimated_fields = None
     for idx, d in enumerate(ts.dates):
         if d in ts.intervention_dates:
             intervention = ts.interventions[ts.intervention_dates.index(d)]
@@ -491,27 +501,49 @@ for k, ts in sorted(places.items()):
             intervention = ts.interventions[-1]
         else: assert False, "Couldn't find intervention."
 
-        initial_fields = [region_id, d.isoformat(), country, province,
-                ts.latitude, ts.longitude, intervention, ts.population]
-        stat_fields = [ts.confirmed[idx], ts.deaths[idx]]
-        if idx >= start_idx:
-            sim_idx = idx-start_idx
-            stat_fields += list(trajectories[sim_idx])
-            active_infections = I[sim_idx]+E[sim_idx]+H[sim_idx]
-            cumulative_infections = active_infections + R[sim_idx] + D[sim_idx]
-            stat_fields += [active_infections, cumulative_infections]
-        else:
-            stat_fields += ['']*8
+        initial_fields = [region_id, d.isoformat(),
+                display_name, country, province,
+                ts.latitude, ts.longitude,
+                intervention, ts.population]
         def per10k(x):
             if x == '': return ''
-            return 10000*x/ts.population
-        def cleanup(x):
+            return np.round(10000*x/ts.population)
+        def round_delta(x, y):
+            if x == '' or y == '': return ''
+            return np.round(x-y)
+
+        jhu_fields = [ts.confirmed[idx], ts.deaths[idx]]
+        jhu_per10k_fields = [per10k(s) for s in jhu_fields]
+        if prev_jhu_fields is None: jhu_delta_fields = ['', '']
+        else: jhu_delta_fields = [round_delta(x,p)
+                for x,p in zip(jhu_fields, prev_jhu_fields)]
+        prev_jhu_fields = jhu_fields
+
+        if idx >= start_idx:
+            sim_idx = idx-start_idx
+            estimated_fields = list(trajectories[sim_idx])
+            active_infections = I[sim_idx]+E[sim_idx]+H[sim_idx]
+            cumulative_infections = active_infections + R[sim_idx] + D[sim_idx]
+            estimated_fields += [active_infections, cumulative_infections]
+        else:
+            estimated_fields = ['']*8
+        def round_thousands(x):
             if x == '': return ''
-            return np.round(x)
-        stat_fields += [per10k(s) for s in stat_fields]
-        stat_fields = [cleanup(s) for s in stat_fields]
-        misc_fields = [time_program_began, '', '']
-        all_fields = initial_fields + stat_fields + misc_fields
+            return np.round(x, -3)
+        estimated_per10k_fields = [per10k(s) for s in estimated_fields]
+        if prev_estimated_fields is None:
+            estimated_delta_fields = ['']*len(estimated_fields)
+        else: estimated_delta_fields = [round_delta(x, p)
+                for x,p in zip(estimated_fields, prev_estimated_fields)]
+        prev_estimated_fields = estimated_fields
+        estimated_fields = [round_thousands(s) for s in estimated_fields]
+        misc_fields = [present_date.isoformat(), '', '']
+        all_fields = (
+                initial_fields +
+                jhu_fields + estimated_fields +
+                jhu_delta_fields + estimated_delta_fields +
+                jhu_per10k_fields + estimated_per10k_fields +
+                misc_fields)
         output_comprehensive_series_w.writerow(all_fields)
         if d == present_date:
             output_comprehensive_snapshot_w.writerow(all_fields)
