@@ -3,7 +3,6 @@ import argparse
 import collections
 import csv
 import datetime
-import dateutil.parser
 import io
 import numpy as np
 import os
@@ -14,8 +13,8 @@ from common import *
 
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
-parser.add_argument("-s", "--start", default="2020-01-22")
-parser.add_argument("-e", "--end", default="today")
+parser.add_argument("--first", default="2020-01-22")
+parser.add_argument("--last", default="today")
 parser.add_argument("--interventions_doc", default="1Rl3uhYkKfZiYiiRyJEl7R5Xay2HNT20R1X1j1nDCnd8")
 parser.add_argument("--interventions_sheet", default="Interventions")
 parser.add_argument("--sheets_csv_fetcher", default=(
@@ -27,22 +26,22 @@ parser.add_argument("--JHU_url_format", default=(
 parser.add_argument('--JHU_data_dir', default='JHU_data')
 args = parser.parse_args()
 
-start_date = parse_date(args.start)
-end_date = parse_date(args.end)
-assert start_date, "Couldn't parse date: " + args.start
-assert end_date, "Couldn't parse date: " + args.end
+first_date = parse_date(args.first)
+assert first_date, "Couldn't parse date: " + args.first
+last_date = parse_date(args.last)
+assert last_date, "Couldn't parse date: " + args.last
 
 
 # Download Johns Hopkins Data:
 downloads = []
-dates = list(date_range_inclusive(start_date, end_date))
+dates = list(date_range_inclusive(first_date, last_date))
 
 for n, d in enumerate(dates):
     url = d.strftime(args.JHU_url_format)
     file_path = os.path.join(args.JHU_data_dir, d.isoformat() + ".csv")
     downloads.append([url, file_path, n])
 
-maybe_mkdir(args.JHU_data_dir)
+maybe_makedir(args.JHU_data_dir)
 for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print("Downloading "+file_path+" from: "+url)
@@ -80,15 +79,16 @@ def fetch_intervention_data():
         if p in interventions:
             print("Duplicate rows for place ",p)
         ivs = [row[c] for c in date_cols]
-        interventions[p] = ivs
-    return dates, interventions
+        interventions[p] = TimeSeries(dates[0], ivs, extend_ends=True)
+    intervention_unknown = TimeSeries(dates[0], ['Unknown' for d in dates],
+            extend_ends=True)
+    return intervention_unknown, interventions
 
 
 print("Fetching latest intervention data")
-intervention_dates, interventions = fetch_intervention_data()
-intervention_unknown = ['Unknown' for d in intervention_dates]
+intervention_unknown, interventions = fetch_intervention_data()
 
-# Read popultion data:
+# Read population data:
 population = load_population_data()
 
 # Read our JHU data, and reconcile it together:
@@ -97,7 +97,7 @@ interventions_recorded = set()
 unknown_interventions_places = set()
 throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
-def first_of(d, ks):
+def first_present(d, ks):
     for k in ks:
         if k in d: return d[k]
     return None
@@ -107,14 +107,14 @@ for url, file_name, day in downloads:
     for i in range(1, len(rows)):
         keyed_row = dict(zip(rows[0], rows[i]))
 
-        country = first_of(keyed_row, ['Country_Region', 'Country/Region'])
-        province = first_of(keyed_row, ['Province_State', 'Province/State'])
-        district = first_of(keyed_row, ['Admin2']) or ''
-        latitude = first_of(keyed_row, ['Lat', 'Latitude'])
-        longitude = first_of(keyed_row, ['Long_', 'Longitude'])
-        confirmed = first_of(keyed_row, ['Confirmed'])
-        deaths = first_of(keyed_row, ['Deaths'])
-        recovered = first_of(keyed_row, ['Recovered'])
+        country = first_present(keyed_row, ['Country_Region', 'Country/Region'])
+        province = first_present(keyed_row, ['Province_State', 'Province/State'])
+        district = first_present(keyed_row, ['Admin2']) or ''
+        latitude = first_present(keyed_row, ['Lat', 'Latitude'])
+        longitude = first_present(keyed_row, ['Long_', 'Longitude'])
+        confirmed = first_present(keyed_row, ['Confirmed'])
+        deaths = first_present(keyed_row, ['Deaths'])
+        recovered = first_present(keyed_row, ['Recovered'])
 
         p = (country, province, district)
         if p in throw_away_places: continue
@@ -125,7 +125,6 @@ for url, file_name, day in downloads:
             places[p] = KnownData(dates)
             if p in population:
                 places[p].population = population[p]
-            places[p].intervention_dates = intervention_dates
             if p in interventions:
                 places[p].interventions = interventions[p]
                 interventions_recorded.add(p)

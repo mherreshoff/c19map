@@ -209,7 +209,7 @@ for k, ts in sorted(places.items()):
     stable_dates = set()
     prev_inv = ts.interventions[0]
     run = 1000
-    for inv_d, inv in zip(ts.intervention_dates, ts.interventions):
+    for inv_d, inv in ts.interventions.items():
         if inv != prev_inv: run = 1
         else: run += 1
         prev_inv = inv
@@ -219,15 +219,10 @@ for k, ts in sorted(places.items()):
     empirical_growths_here = collections.defaultdict(list)
     for date, d, nd in zip(ts.dates, ts.deaths, ts.deaths[1:]):
         if date not in stable_dates: continue
-        try:
-            inv_idx = ts.intervention_dates.index(date)
-            inv = ts.interventions[inv_idx]
-        except ValueError:
-            continue
         if d < empirical_growth_min_deaths: continue
         if d > N*empirical_growth_max_pop_frac: continue
+        inv = ts.interventions[date]
         growth = nd/d
-        # TODO check for being at the start of an intervention.
         empirical_growths_here[inv].append(growth)
     for inv, gs in empirical_growths_here.items():
         empirical_growths[inv].append(scipy.stats.gmean(gs))
@@ -245,9 +240,10 @@ for k, v in fixed_growth_by_inv.items():
 
 deaths_rel_to_lockdown = collections.defaultdict(list)
 for k, ts in sorted(places.items()):
-    if 'Lockdown' not in ts.interventions: continue
-    first_lockdown_ts_idx = ts.interventions.index('Lockdown')
-    first_lockdown_date = ts.intervention_dates[first_lockdown_ts_idx]
+    if ts.interventions is None: continue
+    if 'Lockdown' not in ts.interventions.array(): continue
+    first_lockdown_ts_idx = ts.interventions.array().index('Lockdown')
+    first_lockdown_date = ts.interventions.date(first_lockdown_ts_idx)
     if first_lockdown_date not in ts.dates: continue
     lockdown_idx = ts.dates.index(first_lockdown_date)
     deaths_at_lockdown = ts.deaths[lockdown_idx]
@@ -316,14 +312,13 @@ if DEBUG_LOCKDOWN_FIT:
 
 
 def interventions_to_beta_fn(
-        iv_dates, iv_strings, zero_day, growth_rate_power=None):
+        iv, zero_day, growth_rate_power=None):
     beta_starts = []
     prev_s = ''
-    for d, s in zip(iv_dates, iv_strings):
+    for d, s in iv.items():
         if s != prev_s:
             beta_starts.append(
-                    ((d-zero_day).days,
-                        beta_by_intervention[s]))
+                    ((d-zero_day).days, beta_by_intervention[s]))
             prev_s = s
     beta_starts.sort(reverse=True)
     def beta_fn(t):
@@ -354,7 +349,7 @@ infected_w.writerow(
 
 growth_rate_w = csv.writer(open('output_limiting_growth_rates.csv', 'w'))
 headers = ["Province/State", "Country/Region", "Lat", "Long"]
-intervention_dates = list(places.values())[0].intervention_dates
+intervention_dates = list(list(places.values())[0].interventions.dates())
 headers += ["%d/%d/%d" % (d.month, d.day, d.year%100)
         for d in intervention_dates]
 growth_rate_w.writerow(headers)
@@ -415,7 +410,7 @@ for k, ts in sorted(places.items()):
     start_idx = nz_deaths[0]
     fit_length = len(ts.dates)-start_idx
     model.contact_rate = interventions_to_beta_fn(
-            ts.intervention_dates, ts.interventions, present_date)
+            ts.interventions, present_date)
     growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
 
     t = np.arange(fit_length) - (fit_length+1)
@@ -433,7 +428,7 @@ for k, ts in sorted(places.items()):
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
         model.contact_rate = interventions_to_beta_fn(
-            ts.intervention_dates, ts.interventions, present_date, gr_pow)
+            ts.interventions, present_date, gr_pow)
         growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
         # Recompute the equilibrium since we've altered the model.
     else:
@@ -479,7 +474,7 @@ for k, ts in sorted(places.items()):
     # Output Time Sequence for Growth Rates:
     growth_rates = [
             seir_beta_to_growth_rate(model.contact_rate((d-present_date).days))
-            for d in intervention_dates]
+            for d in ts.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
     # Comprehensive output CSV:
@@ -493,13 +488,7 @@ for k, ts in sorted(places.items()):
     prev_jhu_fields = None
     prev_estimated_fields = None
     for idx, d in enumerate(ts.dates):
-        if d in ts.intervention_dates:
-            intervention = ts.interventions[ts.intervention_dates.index(d)]
-        elif d < ts.intervention_dates[0]:
-            intervention = ts.interventions[0]
-        elif d > ts.intervention_dates[-1]:
-            intervention = ts.interventions[-1]
-        else: assert False, "Couldn't find intervention."
+        intervention = ts.interventions[d]
 
         initial_fields = [region_id, d.isoformat(),
                 display_name, country, province,
@@ -554,7 +543,7 @@ for k, ts in sorted(places.items()):
 
     intervention_starts = []
     old_s = 'No Intervention'
-    for d,s in zip(ts.intervention_dates, ts.interventions):
+    for d,s in ts.interventions.items():
         if s!=old_s: intervention_starts.append((d, s))
         old_s = s
     intervention_s = ', '.join(

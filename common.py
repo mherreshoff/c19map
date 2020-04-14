@@ -17,7 +17,7 @@ def date_range_inclusive(date, end_date, delta=None):
         date += delta
 
 
-def maybe_mkdir(dirname):
+def maybe_makedir(dirname):
     if not os.path.exists(dirname): os.makedirs(dirname)
 
 
@@ -26,6 +26,9 @@ class TimeSeries:
         self._start_date = start_date
         self._array = array
         self._extend_ends = extend_ends
+
+    def array(self):
+        return self._array
 
     def start_date(self):
         return self._start_date
@@ -46,13 +49,15 @@ class TimeSeries:
     def index_to_number(self, idx, extend=False):
         if isinstance(idx, datetime.date):
             n = (idx - self._start_date).days
-        if n < 0:
-            if extend: return 0
-            else: return None
-        if n >= len(self.array):
-            if extend: return len(self.array)-1
-            else: return None
-        return idx
+            if n < 0:
+                if extend: return 0
+                else: return None
+            if n >= len(self._array):
+                if extend: return len(self._array)-1
+                else: return None
+        else:
+            n = idx
+        return n
 
     def __getitem__(self, idx):
         n = self.index_to_number(idx, self._extend_ends)
@@ -64,6 +69,10 @@ class TimeSeries:
 
     def __iter__(self):
         return iter(self._array)
+
+    def items(self):
+        for i, x in enumerate(self._array):
+            yield (self.date(i), x)
 
 
 
@@ -83,8 +92,7 @@ class KnownData:
         self.deaths = np.zeros(len(dates), dtype=int)
         self.recovered = np.zeros(len(dates), dtype=int)
 
-        self.intervention_dates = []
-        self.interventions = []
+        self.interventions = None
 
     def update(self, k, day, num):
         if k == 'confirmed': a = self.confirmed
