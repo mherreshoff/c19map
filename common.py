@@ -1,6 +1,13 @@
 import csv
 import datetime
+import dateutil.parser
 import numpy as np
+import os
+
+def parse_date(s):
+    if s == "today": return datetime.date.today()
+    try: return dateutil.parser.parse(s).date()
+    except ValueError: return None
 
 
 def date_range_inclusive(date, end_date, delta=None):
@@ -8,6 +15,10 @@ def date_range_inclusive(date, end_date, delta=None):
     while date <= end_date:
         yield date
         date += delta
+
+
+def maybe_mkdir(dirname):
+    if not os.path.exists(dirname): os.makedirs(dirname)
 
 
 class TimeSeries:

@@ -24,12 +24,13 @@ parser.add_argument("--JHU_url_format", default=(
     'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master'+
 #   'https://raw.githack.com/CSSEGISandData/COVID-19/master'+
    '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
-data_directory = 'JHU_data'
+parser.add_argument('--JHU_data_dir', default='JHU_data')
 args = parser.parse_args()
 
-start_date = datetime.date.fromisoformat(args.start)
-if args.end == "today": end_date = datetime.date.today()
-else: end_date = datetime.date.fromisoformat(args.end)
+start_date = parse_date(args.start)
+end_date = parse_date(args.end)
+assert start_date, "Couldn't parse date: " + args.start
+assert end_date, "Couldn't parse date: " + args.end
 
 
 # Download Johns Hopkins Data:
@@ -38,10 +39,10 @@ dates = list(date_range_inclusive(start_date, end_date))
 
 for n, d in enumerate(dates):
     url = d.strftime(args.JHU_url_format)
-    file_path = os.path.join(data_directory, d.isoformat() + ".csv")
+    file_path = os.path.join(args.JHU_data_dir, d.isoformat() + ".csv")
     downloads.append([url, file_path, n])
 
-if not os.path.exists(data_directory): os.makedirs(data_directory)
+maybe_mkdir(args.JHU_data_dir)
 for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print("Downloading "+file_path+" from: "+url)
@@ -61,12 +62,10 @@ def fetch_intervention_data():
     date_cols = []
     dates = []
     for i, s in enumerate(headers):
-        try:
-            d = dateutil.parser.parse(s).date()
-            date_cols.append(i)
-            dates.append(d)
-        except ValueError:
-            pass # Not a date column
+        d = parse_date(s)
+        if d is None: continue
+        date_cols.append(i)
+        dates.append(d)
     for d, d2 in zip(dates, dates[1:]):
         assert (d2-d).days == 1, "Dates must be consecutive.  Did a column get deleted?"
 
