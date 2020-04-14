@@ -507,7 +507,7 @@ for k, ts in sorted(places.items()):
             return 10000*x/ts.population
         def cleanup(x):
             if x == '': return ''
-            return np.round(x, 2)
+            return np.round(x)
         stat_fields += [per10k(s) for s in stat_fields]
         stat_fields = [cleanup(s) for s in stat_fields]
         misc_fields = [time_program_began, '', '']
