@@ -296,8 +296,8 @@ for i, b in enumerate(lockdown_curve_params):
     print("    beta{i} = {b} --> growth rate = {g}".format(
         i=i, b=b, g=seir_beta_to_growth_rate(b)))
 
-# TODO: fix the optimization.
-# beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
+# Use the curve we got from the optimization for the lockdown category.
+beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
 
 
 if DEBUG_LOCKDOWN_FIT:
