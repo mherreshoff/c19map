@@ -19,53 +19,38 @@ args = parser.parse_args()
 # Load the data:
 places = pickle.load(open('time_series.pkl', 'rb'))
 
-def csv_as_matrix(path):
-    return [r for r in csv.reader(open(path, 'r'))][1:]
-country_renames = {r[0]: r[1] for r in csv_as_matrix('data_country_renames.csv')}
-place_renames = {
-        (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
-
 intervention_date = {}
-for country, region, change, date, explanation in csv_as_matrix('data_interventions.csv'):
-    if change == args.intervention:
-        if date == '': continue
-        p = (country, region, '')
-        if p[0] in country_renames: p = (country_renames[p[0]], p[1], p[2])
-        if p in place_renames: p = place_renames[p]
-        intervention_date[p] = dateutil.parser.parse(date).date()
+for k, place in places.items():
+    print(k)
+    inv_date = place.interventions.date_of_first(args.intervention)
+    if inv_date is None: continue
+    intervention_date[k] = inv_date
+
+for country in sorted(intervention_date.keys()):
+    if country[1] != '' or country[2] != '': continue
+    for province in places.keys():
+        if province in intervention_date: continue
+        if province[0] == country[0] and province[1] != '' and province[2] == '':
+            intervention_date[province] = intervention_date[country]
 
 plots = []
 
-for country in sorted(intervention_date.keys()):
-    if country[1] != '': continue
-    if country[2] != '': continue
-    for province in places.keys():
-        if province[2] != '': continue
-        if province[1] == '': continue
-        if province[0] == country[0]:
-            intervention_date[province] = intervention_date[country]
 
-
-
-for k in sorted(intervention_date.keys()):
-    if k not in places:
-        print("Unknown place: ", k, " referenced in interventions.")
-        continue
+for k, iv_date in sorted(intervention_date.items()):
     place_str = ": ".join([s for s in k if s != ''])
     print("place_str:", place_str)
-    iv_date = intervention_date[k]
-    ts = places[k]
-    start_idx = np.argmax(ts.deaths>=args.mindeaths)
-    if ts.deaths[start_idx] < args.mindeaths: continue
-    dates = ts.dates[start_idx:]
-    deaths = ts.deaths[start_idx:]
+    place = places[k]
+    start_idx = np.argmax(place.deaths.array()>=args.mindeaths)
+    if place.deaths[start_idx] < args.mindeaths: continue
+    dates = list(place.deaths.dates())[start_idx:]
+    deaths = place.deaths[start_idx:]
     for i in range(1, len(deaths)):
         if deaths[i] < deaths[i-1]: deaths[i] = deaths[i-1]
         # Force monotonicity.
     N = args.smoothing
     xs = np.array([(d-iv_date).days for d in dates[:-N]])
     ys = np.power(deaths[N:] / deaths[:-N], 1.0/N) - 1
-    plots.append((place_str, xs,ys))
+    plots.append((place_str, xs, ys))
 
 all_vals = collections.defaultdict(list)
 for label,xs,ys in plots:
@@ -94,4 +79,3 @@ for spine in ('top', 'right', 'bottom', 'left'):
     ax.spines[spine].set_visible(False)
 plt.show()
 
-    

@@ -146,7 +146,9 @@ for p in sorted(interventions.keys()):
 for p in sorted(places.keys()):
     if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
-        if state not in places: places[state] = KnownData(dates)
+        if state not in places:
+            places[state] = KnownData(dates)
+            places[state].interventions = intervention_unknown
         places[state].confirmed += places[p].confirmed
         places[state].deaths += places[p].deaths
         places[state].recovered += places[p].recovered

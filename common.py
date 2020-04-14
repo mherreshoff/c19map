@@ -45,6 +45,10 @@ class TimeSeries:
         for i, _ in enumerate(self._array):
             yield self.date(i)
 
+    def date_of_first(self, x):
+        try: return self.date(self._array.index(x))
+        except ValueError: return None
+
     def date_to_position(self, date, extrapolate=False, cutoff=True):
         n = (date - self._start_date).days
         if n < 0:
