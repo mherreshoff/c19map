@@ -39,7 +39,7 @@ HOSPITAL_DURATION = 9.75
     # the death curve more.
     # 11.2 -> https://www.medrxiv.org/content/10.1101/2020.02.07.20021154v1
     # 8.3 -> https://www.medrxiv.org/content/medrxiv/early/2020/01/28/2020.01.26.20018754.full.pdf
-P_DEATH = 0.14
+P_DEATH_GIVEN_HOSPITAL = 0.14
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
@@ -185,7 +185,7 @@ model = Model(
         LATENT_PERIOD,
         INFECTIOUS_PERIOD,
         P_HOSPITAL, HOSPITAL_DURATION,
-        P_DEATH)
+        P_DEATH_GIVEN_HOSPITAL)
 
 
 # Load the JHU time series data:
