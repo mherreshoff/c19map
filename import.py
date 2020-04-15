@@ -72,8 +72,9 @@ def fetch_intervention_data():
 
 
 interventions = fetch_intervention_data()
-inv_dates = list(list(interventions.values())[0].dates())
-intervention_unknown = TimeSeries(inv_dates[0], ['Unknown' for d in inv_dates])
+intervention_dates = list(list(interventions.values())[0].dates())
+intervention_unknown = TimeSeries(
+        intervention_dates[0], ['Unknown' for d in intervention_dates])
 
 # Read population data:
 population = load_population_data()
@@ -90,7 +91,8 @@ def first_present(d, ks):
     return None
 
 for url, file_name, day in downloads:
-    for keyed_row in csv_as_dicts(open(file_name,encoding='utf-8-sig')):
+    for keyed_row in csv_as_dicts(open(file_name, encoding='utf-8-sig')):
+        # Note: utf-8-sig is there to get rid of unicode byte order mark characters.
         country = first_present(keyed_row, ['Country_Region', 'Country/Region'])
         province = first_present(keyed_row, ['Province_State', 'Province/State'])
         district = first_present(keyed_row, ['Admin2']) or ''
