@@ -38,48 +38,42 @@ for n, d in enumerate(dates):
 maybe_makedir(args.JHU_data_dir)
 for url, file_path, day in downloads:
     if not os.path.exists(file_path):
-        print("Downloading "+file_path+" from: "+url)
+        print(f"Downloading {file_path} from: {url}")
         urllib.request.urlretrieve(url, file_path)
 
 
 def fetch_intervention_data():
     """Download c19map.org's intervention data."""
+    print("Downloading intervention data...")
     csv_url = args.sheets_csv_fetcher.format(
         doc=args.interventions_doc, sheet=args.interventions_sheet)
     csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
-    intervention_csv = csv.reader(io.StringIO(csv_str))
-
-    headers = next(intervention_csv)
-    province_col = headers.index("Province/State")
-    country_col = headers.index("Country/Region")
-    date_cols = []
-    dates = []
-    for i, s in enumerate(headers):
-        d = parse_date(s)
-        if d is None: continue
-        date_cols.append(i)
-        dates.append(d)
-    for d, d2 in zip(dates, dates[1:]):
-        assert (d2-d).days == 1, "Dates must be consecutive.  Did a column get deleted?"
+    print("Done.")
 
     interventions = {}
-    for row in intervention_csv:
-        country = row[country_col]
-        province = row[province_col]
-        old_p = (country, province, '')
-        p = canonicalize_place(old_p)
-        if p != old_p:
-            print("Non-canonical place: ",p," detected in interventions.")
-        if p in interventions:
-            print("Duplicate rows for place ",p)
-        ivs = [row[c] for c in date_cols]
-        interventions[p] = TimeSeries(dates[0], ivs)
-    intervention_unknown = TimeSeries(dates[0], ['Unknown' for d in dates])
-    return intervention_unknown, interventions
+    for row in csv_as_dicts(io.StringIO(csv_str)):
+        country = row["Country/Region"]
+        province = row["Province/State"]
+        place = (country, province, '')
+        assert place not in interventions, f"Duplicate row for place {place}"
+
+        inv_by_date = {}
+        for col, val in row.items():
+            d = parse_date(col)
+            if d is not None:
+                inv_by_date[d] = val
+
+        dates, inv_series = zip(*sorted(inv_by_date.items()))
+        for d, d2 in zip(dates, dates[1:]):
+            assert (d2-d).days == 1, "Dates must be consecutive.  Did a column get deleted?"
+
+        interventions[place] = TimeSeries(dates[0], inv_series)
+    return interventions
 
 
-print("Fetching latest intervention data")
-intervention_unknown, interventions = fetch_intervention_data()
+interventions = fetch_intervention_data()
+inv_dates = list(list(interventions.values())[0].dates())
+intervention_unknown = TimeSeries(inv_dates[0], ['Unknown' for d in inv_dates])
 
 # Read population data:
 population = load_population_data()
