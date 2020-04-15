@@ -4,14 +4,28 @@ import dateutil.parser
 import numpy as np
 import os
 
+# Misc. Helpers:
+
+def csv_as_matrix(path):
+    return [r for r in csv.reader(open(path, 'r'))][1:]
+
+
+def csv_as_dicts(source):
+    csv_r = csv.reader(source)
+    headers = next(csv_r)
+    for row in csv_r:
+        yield {col: x for col,x in zip(headers, row)}
+
+
 def parse_date(s):
     if s == "today": return datetime.date.today()
     try: return dateutil.parser.parse(s).date()
     except ValueError: return None
 
 
-def date_range_inclusive(date, end_date, delta=None):
+def date_range_inclusive(start_date, end_date, delta=None):
     if delta is None: delta = datetime.timedelta(1)
+    date = start_date
     while date <= end_date:
         yield date
         date += delta
@@ -130,8 +144,6 @@ class KnownData:
         a[day] = max(a[day], num)
 
 
-def csv_as_matrix(path):
-    return [r for r in csv.reader(open(path, 'r'))][1:]
 
 
 # Loading popultion data:

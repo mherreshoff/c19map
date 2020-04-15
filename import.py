@@ -102,10 +102,7 @@ def first_present(d, ks):
     return None
 
 for url, file_name, day in downloads:
-    rows = [row for row in csv.reader(open(file_name,encoding='utf-8-sig'))]
-    for i in range(1, len(rows)):
-        keyed_row = dict(zip(rows[0], rows[i]))
-
+    for keyed_row in csv_as_dicts(open(file_name,encoding='utf-8-sig')):
         country = first_present(keyed_row, ['Country_Region', 'Country/Region'])
         province = first_present(keyed_row, ['Province_State', 'Province/State'])
         district = first_present(keyed_row, ['Admin2']) or ''
