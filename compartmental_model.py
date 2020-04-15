@@ -231,7 +231,7 @@ for k, ts in sorted(places.items()):
 for k, gs in sorted(empirical_growths.items()):
     m = np.median(gs)
     fixed_growth_by_inv[k] = m
-    print('Intervention Status "{k}" has growth rate {m}'.format(k=k,m=m))
+    print(f"Intervention Status \"{k}\" has growth rate {m}")
 fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 
 beta_by_intervention = {}
@@ -289,8 +289,8 @@ lockdown_curve_params = scipy.optimize.minimize(
 
 print()
 for i, b in enumerate(lockdown_curve_params):
-    print("    beta{i} = {b} --> growth rate = {g}".format(
-        i=i, b=b, g=seir_beta_to_growth_rate(b)))
+    g = seir_beta_to_growth_rate(b)
+    print(f"    beta{i} = {b} --> growth rate = {g}")
 
 # Use the curve we got from the optimization for the lockdown category.
 beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
