@@ -1,3 +1,4 @@
+import argparse
 import csv
 import datetime
 import dateutil.parser
@@ -21,6 +22,12 @@ def parse_date(s):
     if s == "today": return datetime.date.today()
     try: return dateutil.parser.parse(s).date()
     except ValueError: return None
+
+
+def date_argument(s):
+    d = parse_date(s)
+    if d is None: raise argparse.ArgumentTypeError("Unparsable date: " + s)
+    return d
 
 
 def date_range_inclusive(start_date, end_date, delta=None):

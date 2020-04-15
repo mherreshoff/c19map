@@ -13,29 +13,23 @@ from common import *
 
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
-parser.add_argument("--start", default="2020-01-22")
-parser.add_argument("--last", default="today")
+parser.add_argument("--start", default="2020-01-22", type=date_argument)
+parser.add_argument("--last", default="today", type=date_argument)
 parser.add_argument("--interventions_doc", default="1Rl3uhYkKfZiYiiRyJEl7R5Xay2HNT20R1X1j1nDCnd8")
 parser.add_argument("--interventions_sheet", default="Interventions")
 parser.add_argument("--sheets_csv_fetcher", default=(
     "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&sheet={sheet}"))
 parser.add_argument("--JHU_url_format", default=(
     'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master'+
-#   'https://raw.githack.com/CSSEGISandData/COVID-19/master'+
-   '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
+    '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
 parser.add_argument('--JHU_data_dir', default='JHU_data')
 args = parser.parse_args()
 
-start_date = parse_date(args.start)
-assert start_date, "Couldn't parse date: " + args.start
-last_date = parse_date(args.last)
-assert last_date, "Couldn't parse date: " + args.last
-
 
 # Download Johns Hopkins Data:
-downloads = []
-dates = list(date_range_inclusive(start_date, last_date))
+dates = list(date_range_inclusive(args.start, args.last))
 
+downloads = []
 for n, d in enumerate(dates):
     url = d.strftime(args.JHU_url_format)
     file_path = os.path.join(args.JHU_data_dir, d.isoformat() + ".csv")
@@ -151,10 +145,8 @@ for p in sorted(places.keys()):
         places[state].recovered += places[p].recovered
 
 # Fix the fact that France was recorded as French Polynesia on March 23rd:
-france_k = ('France', 'France', '')
-french_polynesia_k = ('France', 'French Polynesia', '')
-france = places[france_k]
-french_polynesia = places[french_polynesia_k]
+france = places[('France', 'France', '')]
+french_polynesia = places[('France', 'French Polynesia', '')]
 idx = datetime.date(2020, 3, 23)
 prev_idx = idx - datetime.timedelta(1)
 france.confirmed[idx] = french_polynesia.confirmed[idx]
