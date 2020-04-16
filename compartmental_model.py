@@ -504,7 +504,7 @@ for k, ts in sorted(places.items()):
 
         jhu_fields = [ts.confirmed[idx], ts.deaths[idx]]
         jhu_per10k_fields = [per10k(s) for s in jhu_fields]
-        if prev_jhu_fields is None: jhu_delta_fields = ['', '']
+        if prev_jhu_fields is None: jhu_delta_fields = ['']*2
         else: jhu_delta_fields = [round_delta(x,p)
                 for x,p in zip(jhu_fields, prev_jhu_fields)]
         prev_jhu_fields = jhu_fields
@@ -527,13 +527,13 @@ for k, ts in sorted(places.items()):
                 for x,p in zip(estimated_fields, prev_estimated_fields)]
         prev_estimated_fields = estimated_fields
         estimated_fields = [round_thousands(s) for s in estimated_fields]
-        misc_fields = [present_date.isoformat(), '', '']
-        all_fields = (
-                initial_fields +
+        all_stat_fields = (
                 jhu_fields + estimated_fields +
                 jhu_delta_fields + estimated_delta_fields +
-                jhu_per10k_fields + estimated_per10k_fields +
-                misc_fields)
+                jhu_per10k_fields + estimated_per10k_fields)
+        all_stat_fields = [(0 if x == '' else x) for x in all_stat_fields]
+        misc_fields = [present_date.isoformat(), '', '']
+        all_fields = initial_fields + all_stat_fields + misc_fields
         output_comprehensive_series_w.writerow(all_fields)
         if d == present_date:
             output_comprehensive_snapshot_w.writerow(all_fields)
