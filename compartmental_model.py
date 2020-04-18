@@ -13,7 +13,7 @@ from scipy.integrate import odeint
 import scipy
 import scipy.stats
 import shutil
-import sympy as sp
+import sympy
 import sys
 
 from common import *
@@ -77,7 +77,8 @@ class Model:
     @contextlib.contextmanager
     def beta(self, val):
         old_contact_rate = self.contact_rate
-        self.contact_rate = val
+        if callable(val): self.contact_rate = val
+        else: self.contact_rate = lambda t: val
         try: yield None
         finally: self.contact_rate = old_contact_rate
 
@@ -120,7 +121,7 @@ class Model:
 
     @functools.lru_cache(maxsize=10000)
     def beta_to_growth_rate(self, beta):
-        with self.beta(lambda t: beta):
+        with self.beta(beta):
             m = self.companion_matrix(dtype=float)
             m = m[1:4,1:4] # Get rid of S, D, and R variables.
             w, v = np.linalg.eig(m)
@@ -131,16 +132,17 @@ class Model:
     @functools.lru_cache(maxsize=10000)
     def growth_rate_to_beta(self, growth_rate):
         target_eigenval = np.log(growth_rate)
-        beta = sp.Symbol('beta')
-        with self.beta(lambda t: beta):
+        beta = sympy.Symbol('beta')
+        with self.beta(beta):
             m = self.companion_matrix(dtype=object)
             m = m[1:4,1:4] # Get rid of S,D, and R variables.
-            m = sp.Matrix(m)
+            m = sympy.Matrix(m)
             eigenvals = list(m.eigenvals().keys())
                 # Symbolic expressions in terms of beta.
             solutions = []
             for eigenval in eigenvals:
-                solutions += sp.solvers.solve(eigenval-target_eigenval, beta)
+                solutions += sympy.solvers.solve(
+                        eigenval-target_eigenval, beta)
             assert len(solutions) == 1
             return solutions[0]
 
@@ -171,17 +173,15 @@ fixed_growth_by_inv = {}
 empirical_growths = collections.defaultdict(list)
 
 
-for k, ts in sorted(places.items()):
-    N = ts.population
-    if N is None: continue
-    country = k[0]
-    if country in tuned_countries: continue
+for p in places.values():
+    if p.population is None: continue
+    if p.country in tuned_countries: continue
 
     # Get the set of dates after a sufficiently long streak of the same intervention:
     stable_dates = set()
-    prev_inv = ts.interventions[0]
+    prev_inv = p.interventions[0]
     run = 1000
-    for inv_d, inv in ts.interventions.items():
+    for inv_d, inv in p.interventions.items():
         if inv != prev_inv: run = 1
         else: run += 1
         prev_inv = inv
@@ -190,11 +190,11 @@ for k, ts in sorted(places.items()):
 
     empirical_growths_here = collections.defaultdict(list)
     for date, d, nd in zip(
-            ts.deaths.dates(), ts.deaths.array(), ts.deaths.array()[1:]):
+            p.deaths.dates(), p.deaths.array(), p.deaths.array()[1:]):
         if date not in stable_dates: continue
         if d < empirical_growth_min_deaths: continue
-        if d > N*empirical_growth_max_pop_frac: continue
-        inv = ts.interventions[date]
+        if d > p.population*empirical_growth_max_pop_frac: continue
+        inv = p.interventions[date]
         growth = nd/d
         empirical_growths_here[inv].append(growth)
     for inv, gs in empirical_growths_here.items():
@@ -212,16 +212,15 @@ for k, v in fixed_growth_by_inv.items():
     beta_by_intervention[k] = lambda t: beta
 
 deaths_rel_to_lockdown = collections.defaultdict(list)
-for k, ts in sorted(places.items()):
-    if ts.interventions is None: continue
-    if 'Lockdown' not in ts.interventions.array(): continue
-    first_lockdown_ts_idx = ts.interventions.array().index('Lockdown')
-    first_lockdown_date = ts.interventions.date(first_lockdown_ts_idx)
-    if first_lockdown_date not in ts.deaths.dates(): continue
-    lockdown_idx = ts.deaths.date_to_position(first_lockdown_date)
-    deaths_at_lockdown = ts.deaths[first_lockdown_date]
+for p in places.values():
+    if p.interventions is None: continue
+    first_lockdown_date = p.interventions.date_of_first('Lockdown')
+    if first_lockdown_date is None: continue
+    if first_lockdown_date not in p.deaths.dates(): continue
+    lockdown_idx = p.deaths.date_to_position(first_lockdown_date)
+    deaths_at_lockdown = p.deaths[first_lockdown_date]
     if deaths_at_lockdown < 5: continue
-    for i, d in enumerate(ts.deaths):
+    for i, d in enumerate(p.deaths):
         deaths_rel_to_lockdown[i-lockdown_idx].append(d/deaths_at_lockdown)
 
 lockdown_death_trend = []
@@ -231,8 +230,8 @@ for k, v in sorted(deaths_rel_to_lockdown.items()):
     lockdown_death_trend.append(np.mean(v))
 
 default_beta = model.growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
-model.contact_rate = lambda t: default_beta
-no_inv_gr, y0 = model.equilibrium()
+with model.beta(default_beta):
+    no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
 ts = np.arange(len(lockdown_death_trend))
 
@@ -244,9 +243,8 @@ def lockdown_curve_beta(params):
 
 
 def lockdown_curve_fit_traj(params):
-    model.contact_rate = lockdown_curve_beta(params)
-    trajectories = odeint(lambda *a: model.derivative(*a), y0, ts)
-    return trajectories
+    with model.beta(lockdown_curve_beta(params)):
+        return odeint(lambda *a: model.derivative(*a), y0, ts)
 
 
 def lockdown_curve_fit(params):
@@ -366,27 +364,27 @@ world_estimated_cases = np.zeros(len(history_dates))
 
 # Run the model forward for each of the places:
 
-for k, ts in sorted(places.items()):
-    N = ts.population
+for k, p in sorted(places.items()):
+    N = p.population
     if N is None: continue
 
-    present_date = ts.deaths.last_date()
-    print("Place =", ts.region_id())
+    present_date = p.deaths.last_date()
+    print("Place =", p.region_id())
 
     # We find the first death and start simulating from there
     # with the population set really big.
-    nz_deaths, = np.nonzero(ts.deaths)
+    nz_deaths, = np.nonzero(p.deaths)
     if len(nz_deaths) == 0:
-        print("No deaths recorded, skipping: ", ts.region_id())
+        print("No deaths recorded, skipping: ", p.region_id())
         continue
     start_idx = nz_deaths[0]
-    fit_length = len(ts.deaths)-start_idx
+    fit_length = len(p.deaths)-start_idx
     model.contact_rate = interventions_to_beta_fn(
-            ts.interventions, present_date)
+            p.interventions, present_date)
     growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
 
     t = np.arange(fit_length) - (fit_length+1)
-    target = ts.deaths[start_idx:]
+    target = p.deaths[start_idx:]
     y0 = equilibrium_state.copy()
     y0[0] = (10**9) - np.sum(y0)
 
@@ -400,7 +398,7 @@ for k, ts in sorted(places.items()):
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
         model.contact_rate = interventions_to_beta_fn(
-            ts.interventions, present_date, gr_pow)
+            p.interventions, present_date, gr_pow)
         growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
         # Recompute the equilibrium since we've altered the model.
     else:
@@ -408,8 +406,8 @@ for k, ts in sorted(places.items()):
         state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
         gr_pow = None
 
-    present_date = ts.deaths.last_date()
-    days_to_present = len(ts.deaths) - 1 - start_idx
+    present_date = p.deaths.last_date()
+    days_to_present = len(p.deaths) - 1 - start_idx
     days_simulation = days_to_present + graph_days_forecast + 1
     t = np.arange(days_simulation) - days_to_present
     
@@ -430,43 +428,43 @@ for k, ts in sorted(places.items()):
     estimated_cases = np.concatenate([padding, estimated_cases])
 
     # Update world history table:
-    world_confirmed += ts.confirmed
-    world_deaths += ts.deaths
-    world_estimated_cases += estimated_cases[:len(ts.deaths)]
+    world_confirmed += p.confirmed
+    world_deaths += p.deaths
+    world_estimated_cases += estimated_cases[:len(p.deaths)]
 
     # Output all variables:
-    row_start = [k[0], k[1], ts.latitude, ts.longitude]
+    row_start = [k[0], k[1], p.latitude, p.longitude]
     all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,days_to_present])))
 
     # Output Estimation:
-    latest_estimate = np.round(estimated_cases[len(ts.deaths)-1], -3)
+    latest_estimate = np.round(estimated_cases[len(p.deaths)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
 
     # Output Time Sequence for Growth Rates:
     growth_rates = [
             model.beta_to_growth_rate(model.contact_rate((d-present_date).days))
-            for d in ts.interventions.dates()]
+            for d in p.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
     country, province, district = k
     prev_jhu_fields = None
     prev_estimated_fields = None
-    for idx, d in enumerate(ts.deaths.dates()):
-        intervention = ts.interventions.extrapolate(d)
+    for idx, d in enumerate(p.deaths.dates()):
+        intervention = p.interventions.extrapolate(d)
 
-        initial_fields = [ts.region_id(), d.isoformat(),
-                ts.display_name(), country, province,
-                ts.latitude, ts.longitude,
-                intervention, ts.population]
+        initial_fields = [p.region_id(), d.isoformat(),
+                p.display_name(), country, province,
+                p.latitude, p.longitude,
+                intervention, p.population]
         def per10k(x):
             if x == '': return ''
-            return np.round(10000*x/ts.population)
+            return np.round(10000*x/p.population)
         def round_delta(x, y):
             if x == '' or y == '': return ''
             return np.round(x-y)
 
-        jhu_fields = [ts.confirmed[idx], ts.deaths[idx]]
+        jhu_fields = [p.confirmed[idx], p.deaths[idx]]
         jhu_per10k_fields = [per10k(s) for s in jhu_fields]
         if prev_jhu_fields is None: jhu_delta_fields = ['']*2
         else: jhu_delta_fields = [round_delta(x,p)
@@ -508,21 +506,21 @@ for k, ts in sorted(places.items()):
 
     intervention_starts = []
     old_s = 'No Intervention'
-    for d,s in ts.interventions.items():
+    for d,s in p.interventions.items():
         if s!=old_s: intervention_starts.append((d, s))
         old_s = s
     intervention_s = ', '.join(
             s+" on "+d.isoformat() for d,s in intervention_starts)
-    ax.set_title(ts.region_id() + "\n" + intervention_s)
+    ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
     for var, curve in zip(Model.variables, trajectories.T):
         ax.semilogy(t, curve, label=var)
-    ax.semilogy(t[0:days_to_present+1], ts.deaths[start_idx:],
+    ax.semilogy(t[0:days_to_present+1], p.deaths[start_idx:],
             's', label='D emp.')
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
-    plt.savefig(os.path.join('graphs', ts.region_id() + '.png'))
+    plt.savefig(os.path.join('graphs', p.region_id() + '.png'))
     plt.close('all') # Reset plot for next time.
 
 # Output world history table:
