@@ -10,6 +10,11 @@ import os
 # -------------------------------------------------- 
 # Generic helpers:
 
+def constant_fn(val):
+    def f(*args): return val
+    return f
+
+
 def friendly_round(n):
     if not isinstance(n, numbers.Number): return n
     if n >= 1000: return np.round(n, -3)

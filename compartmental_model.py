@@ -52,6 +52,9 @@ empirical_growth_max_pop_frac = 0.03
 # growth data to represent it.
 empirical_growth_inv_days = 20
 
+# Attempts to run an optimization to find out how beta changes over a typical lockdown.
+OPTIMIZE_LOCKDOWN = True
+
 # Set to True to see a graph of how our lockdown betas fit the data.
 DEBUG_LOCKDOWN_FIT = False
 
@@ -61,9 +64,11 @@ tuned_countries = set(['China', 'Japan', 'Korea, South'])
 class Model:
     variables = "SEIHDR"
     var_to_id = {v: i for i, v in enumerate(variables)}
-    # The SEIHCDR Model.
+    variable_names = ['Susceptible', 'Exposed', 'Infected',
+            'Hospitalized', 'Dead', 'Recovered']
+    # The SEIHDR Model.
     # An extension of the SEIR model.
-    # See 'About' tab for: https://neherlab.org/covid19/
+    # TODO link to the google doc here.
     def __init__(self,
             contact_rate, latent_t, infectious_t,
             hospital_p, hospital_t, death_p):
@@ -78,7 +83,7 @@ class Model:
     def beta(self, val):
         old_contact_rate = self.contact_rate
         if callable(val): self.contact_rate = val
-        else: self.contact_rate = lambda t: val
+        else: self.contact_rate = constant_fn(val)
         try: yield None
         finally: self.contact_rate = old_contact_rate
 
@@ -166,7 +171,7 @@ model = Model(
 places = pickle.load(open('time_series.pkl', 'rb'))
 
 
-# Growth rates, used to calculate contact_rate.
+# Growth rates, used to calculate betas.
 fixed_growth_by_inv = {}
 
 # Calculate Empirical Growth Rates:
@@ -209,7 +214,8 @@ fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 beta_by_intervention = {}
 for k, v in fixed_growth_by_inv.items():
     beta = model.growth_rate_to_beta(v)
-    beta_by_intervention[k] = lambda t: beta
+    print(f"k={k}: v={v} -> beta={beta}")
+    beta_by_intervention[k] = constant_fn(beta)
 
 deaths_rel_to_lockdown = collections.defaultdict(list)
 for p in places.values():
@@ -252,18 +258,14 @@ def lockdown_curve_fit(params):
     diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
     return diff
 
+if OPTIMIZE_LOCKDOWN:
+    lockdown_curve_params = scipy.optimize.minimize(
+            lockdown_curve_fit,
+            np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
+    beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
 
-lockdown_curve_params = scipy.optimize.minimize(
-        lockdown_curve_fit,
-        np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
-
-print()
-for i, b in enumerate(lockdown_curve_params):
-    g = model.beta_to_growth_rate(b)
-    print(f"    beta{i} = {b} --> growth rate = {g}")
-
-# Use the curve we got from the optimization for the lockdown category.
-beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
+for k, b in beta_by_intervention.items():
+    print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
 
 
 if DEBUG_LOCKDOWN_FIT:
@@ -379,17 +381,16 @@ for k, p in sorted(places.items()):
         continue
     start_idx = nz_deaths[0]
     fit_length = len(p.deaths)-start_idx
-    model.contact_rate = interventions_to_beta_fn(
-            p.interventions, present_date)
-    growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
+    beta = interventions_to_beta_fn(p.interventions, present_date)
+    with model.beta(beta):
+        growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
+        t = np.arange(fit_length) - (fit_length+1)
+        target = p.deaths[start_idx:]
+        y0 = equilibrium_state.copy()
+        y0[0] = (10**9) - np.sum(y0)
 
-    t = np.arange(fit_length) - (fit_length+1)
-    target = p.deaths[start_idx:]
-    y0 = equilibrium_state.copy()
-    y0[0] = (10**9) - np.sum(y0)
-
-    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
-    S, E, I, H, D, R = trajectories.T
+        trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+        S, E, I, H, D, R = trajectories.T
     # TODO: cut off when S < .9*N or some such for accuracy.
 
     # Then see how much to scale the death data to G
@@ -397,9 +398,10 @@ for k, p in sorted(places.items()):
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
-        model.contact_rate = interventions_to_beta_fn(
-            p.interventions, present_date, gr_pow)
-        growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
+        beta = interventions_to_beta_fn(
+                p.interventions, present_date, gr_pow)
+        with model.beta(beta):
+            growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
         # Recompute the equilibrium since we've altered the model.
     else:
         def loss(s): return np.linalg.norm(D*s-target)
@@ -414,7 +416,8 @@ for k, p in sorted(places.items()):
     y0 = state_scale * equilibrium_state
     y0[0] = N - np.sum(y0)
 
-    trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+    with model.beta(beta):
+        trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
     S, E, I, H, D, R = trajectories.T
 
     estimated_cases = E+I+H+D+R  # Everyone who's ever been a case.
@@ -443,7 +446,7 @@ for k, p in sorted(places.items()):
 
     # Output Time Sequence for Growth Rates:
     growth_rates = [
-            model.beta_to_growth_rate(model.contact_rate((d-present_date).days))
+            model.beta_to_growth_rate(beta((d-present_date).days))
             for d in p.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
