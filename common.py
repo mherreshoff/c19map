@@ -30,6 +30,10 @@ class csv_as_dicts:
     def headers(self):
         return self._headers
 
+    def set_headers(self, headers):
+        assert len(headers) == len(self._headers), "Can't change column count."
+        self._headers = headers
+
     def __iter__(self):
         for row in self._csv_reader:
             yield {h: x for h,x in zip(self._headers, row)}
