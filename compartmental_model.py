@@ -19,9 +19,6 @@ import sys
 from common import *
 
 
-time_program_began = datetime.datetime.now().isoformat()
-
-
 # Model parameters:
 LATENT_PERIOD = 3.5
     # 1/sigma - The average length of time between contracting the disease
@@ -374,14 +371,13 @@ for k, ts in sorted(places.items()):
     if N is None: continue
 
     present_date = ts.deaths.last_date()
-    place_s = ' - '.join([s for s in k if s != ''])
-    print("Place =",place_s)
+    print("Place =", ts.region_id())
 
     # We find the first death and start simulating from there
     # with the population set really big.
     nz_deaths, = np.nonzero(ts.deaths)
     if len(nz_deaths) == 0:
-        print("No deaths recorded, skipping: ", place_s)
+        print("No deaths recorded, skipping: ", ts.region_id())
         continue
     start_idx = nz_deaths[0]
     fit_length = len(ts.deaths)-start_idx
@@ -453,21 +449,14 @@ for k, ts in sorted(places.items()):
             for d in ts.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
-    # Comprehensive output CSV:
-    region_id = ' - '.join(s for s in k if s != '')
-    def place_display_name(place):
-        parts = list(collections.OrderedDict.fromkeys(place))
-        return ' - '.join(p for p in parts if p != '')
-    display_name = place_display_name(k)
-
     country, province, district = k
     prev_jhu_fields = None
     prev_estimated_fields = None
     for idx, d in enumerate(ts.deaths.dates()):
         intervention = ts.interventions.extrapolate(d)
 
-        initial_fields = [region_id, d.isoformat(),
-                display_name, country, province,
+        initial_fields = [ts.region_id(), d.isoformat(),
+                ts.display_name(), country, province,
                 ts.latitude, ts.longitude,
                 intervention, ts.population]
         def per10k(x):
@@ -524,7 +513,7 @@ for k, ts in sorted(places.items()):
         old_s = s
     intervention_s = ', '.join(
             s+" on "+d.isoformat() for d,s in intervention_starts)
-    ax.set_title(place_s + "\n" + intervention_s)
+    ax.set_title(ts.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
     for var, curve in zip(Model.variables, trajectories.T):
@@ -533,7 +522,7 @@ for k, ts in sorted(places.items()):
             's', label='D emp.')
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
-    plt.savefig(os.path.join('graphs', place_s + '.png'))
+    plt.savefig(os.path.join('graphs', ts.region_id() + '.png'))
     plt.close('all') # Reset plot for next time.
 
 # Output world history table:

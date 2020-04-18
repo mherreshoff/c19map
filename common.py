@@ -1,4 +1,5 @@
 import argparse
+import collections
 import csv
 import datetime
 import dateutil.parser
@@ -149,6 +150,13 @@ class Place:
 
     def set_key(self, k):
         self.country, self.province, self.district = k
+
+    def region_id(self):
+        return ' - '.join(k for k in self.key() if k != '')
+
+    def display_name(self):
+        parts = list(collections.OrderedDict.fromkeys(self.key()))
+        return ' - '.join(p for p in parts if p != '')
 
     def update(self, k, day, num):
         if k == 'confirmed': a = self.confirmed
