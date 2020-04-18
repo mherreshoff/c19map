@@ -18,10 +18,6 @@ def friendly_round(n):
     return 0
 
 
-def csv_as_matrix(path):
-    return [r for r in csv.reader(open(path, 'r'))][1:]
-
-
 class csv_as_dicts:
     def __init__(self, source):
         if isinstance(source, str): source = open(source, 'r')
@@ -65,6 +61,8 @@ def maybe_makedir(dirname):
 
 
 class TimeSeries:
+    """Represents a time series of data using any array-like object and
+    a start date."""
     def __init__(self, start_date, array):
         self._start_date = start_date
         self._array = array
