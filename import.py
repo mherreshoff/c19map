@@ -156,7 +156,7 @@ deaths_out = csv.writer(open("time_series_deaths.csv", 'w'))
 recovered_out = csv.writer(open("time_series_recovered.csv", 'w'))
 
 headers = ["Province/State","Country/Region","Lat","Long"]
-headers += ["%d/%d/%d" % (d.month, d.day, d.year%100) for d in dates]
+headers += [d.strftime("%m/%d/%y") for d in dates]
 confirmed_out.writerow(headers)
 deaths_out.writerow(headers)
 recovered_out.writerow(headers)
