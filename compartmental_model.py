@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import collections
+import contextlib
 import csv
 import datetime
 import dateutil.parser
@@ -60,38 +61,6 @@ DEBUG_LOCKDOWN_FIT = False
 # The countries we treat specially
 tuned_countries = set(['China', 'Japan', 'Korea, South'])
 
-
-@functools.lru_cache(maxsize=10000)
-def seir_beta_to_growth_rate(beta):
-    sigma = 1/LATENT_PERIOD
-    gamma = 1/INFECTIOUS_PERIOD
-    m = np.array([
-        [-sigma, beta],
-        [sigma, -gamma]], dtype=float)
-    # Note: this matrix is the linearized version of the SEIR diffeq
-    # where S~N for just E and I.
-    w, v = np.linalg.eig(m)
-    return np.exp(np.max(w))
-
-
-@functools.lru_cache(maxsize=10000)
-def seir_growth_rate_to_beta(igr):
-    sigma = 1/LATENT_PERIOD
-    gamma = 1/INFECTIOUS_PERIOD
-    beta = sp.Symbol('beta')
-    target_eigenval = np.log(igr)
-    m = sp.Matrix([
-        [-sigma, beta],
-        [sigma, -gamma]])
-    eigenvals = list(m.eigenvals().keys())
-        # These are symbolic expressions in terms of beta.
-    solns = []
-    for eigenval in eigenvals:
-        solns += sp.solvers.solve(eigenval-target_eigenval, beta)
-    assert len(solns) == 1
-    return solns[0]
-
-
 class Model:
     variables = "SEIHDR"
     var_to_id = {v: i for i, v in enumerate(variables)}
@@ -108,17 +77,28 @@ class Model:
         self.hospital_t = hospital_t
         self.death_p = death_p
 
-    def companion_matrix(self, t=0):
-        # Companion matrix for the linear approximation of the model.
+    @contextlib.contextmanager
+    def beta(self, val):
+        old_contact_rate = self.contact_rate
+        self.contact_rate = val
+        try: yield None
+        finally: self.contact_rate = old_contact_rate
+
+    def companion_matrix(self, t=0, correction=1, dtype=float):
+        """ Companion matrix for the linear approximation of the model.
+
+        Put in S/N for the correction term to get a matrix which computes
+        the gradient of the non-linearized model.
+        """
         flows = [  # (from variable, to variable, amount variable, rate)
-            ('S','E', 'I', self.contact_rate(t)),  # Assumes S ~ N
+            ('S','E', 'I', self.contact_rate(t)*correction),
             ('E','I', 'E', 1/self.latent_t),
             ('I','H', 'I', (1/self.infectious_t)*self.hospital_p),
             ('I','R', 'I', (1/self.infectious_t)*(1-self.hospital_p)),
             ('H','D', 'H', (1/self.hospital_t)*self.death_p),
             ('H','R', 'H', (1/self.hospital_t)*(1-self.death_p))]
         nv = len(Model.variables)
-        m = np.zeros((nv, nv))
+        m = np.zeros((nv, nv), dtype=dtype)
         for sv,tv,av,x in flows:
             si = Model.var_to_id[sv]
             ti = Model.var_to_id[tv]
@@ -141,42 +121,37 @@ class Model:
         state /= state[Model.variables.index('D')] # Normalize by deaths.
         return growth_rate, state
 
+    @functools.lru_cache(maxsize=10000)
+    def beta_to_growth_rate(self, beta):
+        with self.beta(lambda t: beta):
+            m = self.companion_matrix(dtype=float)
+            m = m[1:4,1:4] # Get rid of S, D, and R variables.
+            w, v = np.linalg.eig(m)
+            max_eig_id = int(np.argmax(w))
+            growth_rate = np.exp(w[max_eig_id])
+            return growth_rate
+
+    @functools.lru_cache(maxsize=10000)
+    def growth_rate_to_beta(self, growth_rate):
+        target_eigenval = np.log(growth_rate)
+        beta = sp.Symbol('beta')
+        with self.beta(lambda t: beta):
+            m = self.companion_matrix(dtype=object)
+            m = m[1:4,1:4] # Get rid of S,D, and R variables.
+            m = sp.Matrix(m)
+            eigenvals = list(m.eigenvals().keys())
+                # Symbolic expressions in terms of beta.
+            solutions = []
+            for eigenval in eigenvals:
+                solutions += sp.solvers.solve(eigenval-target_eigenval, beta)
+            assert len(solutions) == 1
+            return solutions[0]
+
     def derivative(self, y, t):
         S,E,I,H,D,R = y
-        N = np.sum(y) - D
-        flows = [  # (from variable, to variable, rate)
-            ('S','E', self.contact_rate(t) * I * S / N),
-            ('E','I', E/self.latent_t),
-            ('I','H', (I/self.infectious_t)*self.hospital_p),
-            ('I','R', (I/self.infectious_t)*(1-self.hospital_p)),
-            ('H','D', (H/self.hospital_t)*self.death_p),
-            ('H','R', (H/self.hospital_t)*(1-self.death_p))]
-        inbound = np.array([
-            sum(x for s,t,x in flows if t==v) for v in Model.variables])
-        outbound = np.array([
-            sum(x for s,t,x in flows if s==v) for v in Model.variables])
-        return list(inbound-outbound)
-
-    def deaths_to_betas(self, D):
-        """Infers a time series of betas using a time series of deaths.
-
-        Starts by using differential equation for deaths to infer hospitalizations.
-        Continues backwards from there.
-
-        NOTE: Doesn't seem to work very well.
-        """
-        def d(xs):
-            d = xs[1:]-xs[:-1]
-            d = np.pad(d, (1,1), 'edge')
-            return (d[:-1]+d[1:])/2.0
-        H = d(D) * self.hospital_t / self.death_p
-        I = d(H) * self.infectious_t / self.hospital_p
-        E = (d(I) + (I / self.infectious_t)) * self.latent_t
-        beta = (d(E) + E / self.latent_t) / np.maximum(I, 0.1)
-            # The np.max prevents divisions by zero.
-            # Note: for now we assume S~N here.
-        return beta
-
+        N = np.sum(y)
+        m = self.companion_matrix(t=t, correction=S/N)
+        return np.matmul(m, y)
 
 
 # Set up a default version of the model:
@@ -236,7 +211,7 @@ fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 
 beta_by_intervention = {}
 for k, v in fixed_growth_by_inv.items():
-    beta = seir_growth_rate_to_beta(v)
+    beta = model.growth_rate_to_beta(v)
     beta_by_intervention[k] = lambda t: beta
 
 deaths_rel_to_lockdown = collections.defaultdict(list)
@@ -258,7 +233,7 @@ for k, v in sorted(deaths_rel_to_lockdown.items()):
     if len(v) < 5: break
     lockdown_death_trend.append(np.mean(v))
 
-default_beta = seir_growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
+default_beta = model.growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
 model.contact_rate = lambda t: default_beta
 no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
@@ -285,11 +260,11 @@ def lockdown_curve_fit(params):
 
 lockdown_curve_params = scipy.optimize.minimize(
         lockdown_curve_fit,
-        np.array([seir_growth_rate_to_beta(1.2)]*2, dtype=float)).x
+        np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
 
 print()
 for i, b in enumerate(lockdown_curve_params):
-    g = seir_beta_to_growth_rate(b)
+    g = model.beta_to_growth_rate(b)
     print(f"    beta{i} = {b} --> growth rate = {g}")
 
 # Use the curve we got from the optimization for the lockdown category.
@@ -331,8 +306,8 @@ def interventions_to_beta_fn(
             s, f = beta_starts[-1]
             b = f(0)
         if growth_rate_power is None: return b
-        return seir_growth_rate_to_beta(
-                seir_beta_to_growth_rate(b)**growth_rate_power)
+        return model.growth_rate_to_beta(
+                model.beta_to_growth_rate(b)**growth_rate_power)
     return beta_fn
 
 
@@ -474,7 +449,7 @@ for k, ts in sorted(places.items()):
 
     # Output Time Sequence for Growth Rates:
     growth_rates = [
-            seir_beta_to_growth_rate(model.contact_rate((d-present_date).days))
+            model.beta_to_growth_rate(model.contact_rate((d-present_date).days))
             for d in ts.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
