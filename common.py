@@ -123,7 +123,7 @@ class TimeSeries:
 
 
 
-class KnownData:
+class Place:
     """All the data we know about a place:
 
     - Johns Hopkins time series for deaths, confirmed, and recovered
@@ -131,6 +131,9 @@ class KnownData:
     - Intervention time series.
     """
     def __init__(self, dates):
+        self.country = None
+        self.province = None
+        self.district = None
         self.latitude = None
         self.longitude = None
         self.population = None
@@ -140,6 +143,12 @@ class KnownData:
         self.recovered =  TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
 
         self.interventions = None
+
+    def key(self):
+        return (self.country, self.province, self.district)
+
+    def set_key(self, k):
+        self.country, self.province, self.district = k
 
     def update(self, k, day, num):
         if k == 'confirmed': a = self.confirmed

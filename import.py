@@ -108,7 +108,8 @@ for url, file_name, day in downloads:
         if p is None: continue
 
         if p not in places:
-            places[p] = KnownData(dates)
+            places[p] = Place(dates)
+            places[p].set_key(p)
             if p in population:
                 places[p].population = population[p]
             if p in interventions:
@@ -134,7 +135,8 @@ for p in sorted(places.keys()):
     if p[0] == "US" and p[2] != '':
         state = (p[0], p[1], '')
         if state not in places:
-            places[state] = KnownData(dates)
+            places[state] = Place(dates)
+            places[state].set_key(state)
             places[state].interventions = intervention_unknown
         places[state].confirmed += places[p].confirmed
         places[state].deaths += places[p].deaths
