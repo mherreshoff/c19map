@@ -7,7 +7,9 @@ import numpy as np
 import numbers
 import os
 
-# Misc. Helpers:
+# -------------------------------------------------- 
+# Generic helpers:
+
 def friendly_round(n):
     if not isinstance(n, numbers.Number): return n
     if n >= 1000: return np.round(n, -3)
@@ -20,11 +22,17 @@ def csv_as_matrix(path):
     return [r for r in csv.reader(open(path, 'r'))][1:]
 
 
-def csv_as_dicts(source):
-    csv_r = csv.reader(source)
-    headers = next(csv_r)
-    for row in csv_r:
-        yield {col: x for col,x in zip(headers, row)}
+class csv_as_dicts:
+    def __init__(self, source):
+        self._csv_reader = csv.reader(source)
+        self._headers = next(self._csv_reader)
+
+    def headers(self):
+        return self._headers
+
+    def __iter__(self):
+        for row in self._csv_reader:
+            yield {h: x for h,x in zip(self._headers, row)}
 
 
 def parse_date(s):
