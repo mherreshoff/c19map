@@ -447,6 +447,7 @@ for k, p in sorted(places.items()):
             for d in p.interventions.dates()]
     growth_rate_w.writerow(row_start + growth_rates)
 
+    # Output comprehensive CSVs:
     country, province, district = k
     prev_jhu_fields = None
     prev_estimated_fields = None
@@ -479,16 +480,13 @@ for k, p in sorted(places.items()):
             estimated_fields += [active_infections, cumulative_infections]
         else:
             estimated_fields = ['']*8
-        def round_thousands(x):
-            if x == '': return ''
-            return np.round(x, -3)
         estimated_per10k_fields = [per10k(s) for s in estimated_fields]
         if prev_estimated_fields is None:
             estimated_delta_fields = ['']*len(estimated_fields)
         else: estimated_delta_fields = [round_delta(x, p)
                 for x,p in zip(estimated_fields, prev_estimated_fields)]
         prev_estimated_fields = estimated_fields
-        estimated_fields = [round_thousands(s) for s in estimated_fields]
+        estimated_fields = [friendly_round(s) for s in estimated_fields]
         all_stat_fields = (
                 jhu_fields + estimated_fields +
                 jhu_delta_fields + estimated_delta_fields +

@@ -4,9 +4,17 @@ import csv
 import datetime
 import dateutil.parser
 import numpy as np
+import numbers
 import os
 
 # Misc. Helpers:
+def friendly_round(n):
+    if not isinstance(n, numbers.Number): return n
+    if n >= 1000: return np.round(n, -3)
+    if n >= 100:  return np.round(n, -2)
+    if n >= 10:   return np.round(n, -1)
+    return 0
+
 
 def csv_as_matrix(path):
     return [r for r in csv.reader(open(path, 'r'))][1:]
