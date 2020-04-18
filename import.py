@@ -74,6 +74,7 @@ intervention_dates = intervention_unknown.dates()
 population = load_population_data()
 
 # Read our JHU data, and reconcile it together:
+canonicalizer = PlaceCanonicalizer()
 places = {}
 interventions_recorded = set()
 unknown_interventions_places = set()
@@ -83,8 +84,6 @@ def first_present(d, ks):
     for k in ks:
         if k in d: return d[k]
     return None
-
-canonicalizer = PlaceCanonicalizer()
 
 for url, file_name, day in downloads:
     for keyed_row in csv_as_dicts(open(file_name, encoding='utf-8-sig')):
