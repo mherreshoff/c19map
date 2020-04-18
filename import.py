@@ -91,6 +91,8 @@ def first_present(d, ks):
         if k in d: return d[k]
     return None
 
+canonicalizer = PlaceCanonicalizer()
+
 for url, file_name, day in downloads:
     for keyed_row in csv_as_dicts(open(file_name, encoding='utf-8-sig')):
         # Note: utf-8-sig is there to get rid of unicode byte order mark characters.
@@ -105,7 +107,7 @@ for url, file_name, day in downloads:
 
         p = (country, province, district)
         if p in throw_away_places: continue
-        p = canonicalize_place(p)
+        p = canonicalizer.canonicalize(p)
         if p is None: continue
 
         if p not in places:

@@ -24,6 +24,7 @@ def csv_as_matrix(path):
 
 class csv_as_dicts:
     def __init__(self, source):
+        if isinstance(source, str): source = open(source, 'r')
         self._csv_reader = csv.reader(source)
         self._headers = next(self._csv_reader)
 
@@ -189,67 +190,59 @@ class Place:
 
 
 
-
 # Loading popultion data:
-_population_data = None
 def load_population_data():
-    global _population_data
-    if _population_data is None:
-        _population_data = {
-                (r[0], r[1], '') : int(r[3].replace(',',''))
-                for r in csv_as_matrix('data_population.csv')}
-    return _population_data
-
+    def num(s): return int(s.replace(',', ''))
+    return {(r["Country"], r["Region"], ''): num(r["Population"])
+            for r in csv_as_dicts('data_population.csv')}
 
 
 # Canonicalization/reconciliation:
-recon_data_loaded = False
-country_renames = None
-place_renames = None
-code_to_us_state = False
-code_to_ca_province = False
+class PlaceCanonicalizer:
+    def __init__(self):
+        self.country_renames = {r["Old Country"]: r["New Country"]
+                for r in csv_as_dicts('data_country_renames.csv')}
+        self.place_renames = {}
+        for r in csv_as_dicts('data_place_renames.csv'):
+            old = (r["Old Country"],r["Old Province"],r["Old District"])
+            new = (r["New Country"],r["New Province"],r["New District"])
+            self.place_renames[old] = new
+        self.code_to_us_state = {r["state"]: r["name"]
+                for r in csv_as_dicts('data_us_states.csv')}
+        self.code_to_ca_province = {r["Code"]: r["Province"]
+                for r in csv_as_dicts('data_ca_provinces.csv')}
 
-# Figures out what places should be named.
-def canonicalize_place(p):
-    def sanetize(s):
+    def sanetize(self, s):
         s = s.strip()
         if s == "None": s = ''
         return s
-    global recon_data_loaded, country_renames, place_renames
-    global code_to_us_state, code_to_ca_province
-    if not recon_data_loaded:
-        country_renames = {r[0]: r[1] for r in csv_as_matrix('data_country_renames.csv')}
-        place_renames = {
-                (r[0],r[1],r[2]): (r[3],r[4],r[5]) for r in csv_as_matrix('data_place_renames.csv')}
-        code_to_us_state = {r[0]: r[3] for r in csv_as_matrix('data_us_states.csv')}
-        code_to_ca_province = {r[0]: r[1] for r in csv_as_matrix('data_ca_provinces.csv')}
-        recon_data_loaded = True
-    p = tuple(map(sanetize, p))
-    # Our models aren't about ships, so we ignore them:
-    s = ';'.join(p)
-    if 'Cruise Ship' in s or 'Princess' in s: return None
 
-    if p[0] in country_renames:
-        p = (country_renames[p[0]], p[1], p[2])
-    if p in place_renames: p = place_renames[p]
+    def canonicalize(self, p):
+        p = tuple(map(self.sanetize, p))
+        # Our models aren't about ships, so we ignore them:
+        for field in p:
+            for ship_word in ['Cruise Ship', 'Princess']:
+                if ship_word in field:
+                    return None
 
-    if p[0] == "US":
-        # Handle province fields like "Hubolt, CA"
-        a = p[1].split(',')
-        if len(a) == 2:
-            state = code_to_us_state.get(a[1].strip(), None)
-            if state:
-                p = (p[0], state, a[0].strip())
-        # Remove the word 'County' from the district field.
-        words = p[2].split(' ')
-        if words[-1] == 'County':
-            p = (p[0], p[1], ' '.join(words[:-1]))
-    if p[0] == "Canada":
-        # Handle province fields like "Montreal, QC"
-        a = p[1].split(',')
-        if len(a) == 2:
-            a[0] = a[0].strip()
-            a[1] = a[1].strip()
-            province = code_to_ca_province.get(a[1], a[1])
-            p = (p[0], province, a[0])
-    return p
+        if p[0] in self.country_renames:
+            p = (self.country_renames[p[0]], p[1], p[2])
+        if p in self.place_renames: p = self.place_renames[p]
+
+        if p[0] == "US":
+            # Handle province fields like "Hubolt, CA"
+            a = [x.strip() for x in p[1].split(',')]
+            if len(a) == 2 and a[1] in self.code_to_us_state:
+                p = (p[0], self.code_to_us_state[a[1]], a[0])
+            # Remove the word 'County' from the district field.
+            words = p[2].split(' ')
+            if words[-1] == 'County':
+                p = (p[0], p[1], ' '.join(words[:-1]))
+
+        if p[0] == "Canada":
+            # Handle province fields like "Montreal, QC"
+            a = [x.strip() for x in p[1].split(',')]
+            if len(a) == 2:
+                province = self.code_to_ca_province.get(a[1], a[1])
+                p = (p[0], province, a[0])
+        return p
