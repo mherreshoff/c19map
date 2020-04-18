@@ -15,7 +15,8 @@ from common import *
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
 parser.add_argument("--start", default="2020-01-22", type=date_argument)
 parser.add_argument("--last", default="today", type=date_argument)
-parser.add_argument("--interventions_doc", default="1Rl3uhYkKfZiYiiRyJEl7R5Xay2HNT20R1X1j1nDCnd8")
+parser.add_argument("--interventions_doc",
+        default="1-tj7Cjx3e3eSfFGhhhJTGikaydIclFG1QrD06Eh9oDM")
 parser.add_argument("--interventions_sheet", default="Interventions")
 parser.add_argument("--sheets_csv_fetcher", default=(
     "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&sheet={sheet}"))
