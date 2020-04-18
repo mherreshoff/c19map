@@ -49,33 +49,26 @@ def fetch_intervention_data():
     csv_url = args.sheets_csv_fetcher.format(
         doc=args.interventions_doc, sheet=args.interventions_sheet)
     csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
+    csv_source = csv_as_dicts(io.StringIO(csv_str))
     print("Done.")
+    date_cols = [(parse_date(s), s) for s in csv_source.headers()]
+    date_cols = sorted((d, s) for d, s in date_cols if d is not None)
+    for d, d2 in zip(date_cols, date_cols[1:]):
+        assert (d2[0]-d[0]).days == 1, "Dates must be consecutive.  Did a column get deleted?"
+    start_date = date_cols[0][0]
+    unknown = TimeSeries(start_date, ['Unknown']*len(date_cols))
 
     interventions = {}
-    for row in csv_as_dicts(io.StringIO(csv_str)):
-        country = row["Country/Region"]
-        province = row["Province/State"]
-        place = (country, province, '')
+    for row in csv_source:
+        place = (row['Country/Region'], row['Province/State'], '')
         assert place not in interventions, f"Duplicate row for place {place}"
-
-        inv_by_date = {}
-        for col, val in row.items():
-            d = parse_date(col)
-            if d is not None:
-                inv_by_date[d] = val
-
-        dates, inv_series = zip(*sorted(inv_by_date.items()))
-        for d, d2 in zip(dates, dates[1:]):
-            assert (d2-d).days == 1, "Dates must be consecutive.  Did a column get deleted?"
-
-        interventions[place] = TimeSeries(dates[0], inv_series)
-    return interventions
+        intervention_list = [row[s] for d,s in date_cols]
+        interventions[place] = TimeSeries(start_date, intervention_list)
+    return interventions, unknown
 
 
-interventions = fetch_intervention_data()
-intervention_dates = list(list(interventions.values())[0].dates())
-intervention_unknown = TimeSeries(
-        intervention_dates[0], ['Unknown' for d in intervention_dates])
+interventions, intervention_unknown = fetch_intervention_data()
+intervention_dates = intervention_unknown.dates()
 
 # Read population data:
 population = load_population_data()
