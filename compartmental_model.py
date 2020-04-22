@@ -24,12 +24,14 @@ LATENT_PERIOD = 3.5
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
     # Citation: 3 studies in the Midas Database with fairly close agreement.
-INFECTIOUS_PERIOD = 4
+INFECTIOUS_PERIOD = 4.2
     # 1/gamma - The average length of time a person stays infectious
-    # TODO: get citation from Brandon.
-P_HOSPITAL = 0.137
+    # Currently an average of MIDAS Database results for "Time From Symptom Onset To Hospitalization".
+    # Heuristic approximation because infectious period may start before symptoms.
+P_HOSPITAL = 0.0714
     # Probability an infectious case gets hospitalized
-    # TODO: find citation & tweak.
+    # We divided the IFR estimate by the probability of death given hospitalization, below, to get the probability of
+    # hospitalization.
 HOSPITAL_DURATION = 9.75
     # Average length of hospital stay.
     # Note: hospital stays for dying people and recovering people aren't the same length.
