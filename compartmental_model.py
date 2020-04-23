@@ -264,6 +264,9 @@ if OPTIMIZE_LOCKDOWN:
     lockdown_curve_params = scipy.optimize.minimize(
             lockdown_curve_fit,
             np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
+    for b,i in enumerate(lockdown_curve_params):
+        g = model.beta_to_growth_rate(b)
+        print(f"\tLockdown: β_{i} = {b} ... growth={g}")
     beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
 
 for k, b in beta_by_intervention.items():
@@ -275,8 +278,8 @@ if DEBUG_LOCKDOWN_FIT:
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
 
-    ax.set_title("Places post-intervention")
-    ax.set_xlabel('Days (0 is intervention)')
+    ax.set_title("Model Fit to Lockdown Death Trend")
+    ax.set_xlabel('Days (Lockdown at 0)')
     ax.set_ylabel('People (log)')
     for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
         ax.semilogy(ts, curve, label=var)
@@ -284,6 +287,7 @@ if DEBUG_LOCKDOWN_FIT:
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
     plt.show()
+    sys.exit(0)
 
 
 def interventions_to_beta_fn(
