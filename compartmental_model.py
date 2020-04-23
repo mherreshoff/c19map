@@ -68,6 +68,9 @@ parser.add_argument('--tuned_countries',
         default=['China', 'Japan', 'Korea, South'], nargs='*')
     # The countries we treat specially
 
+parser.add_argument('-c', '--countries', default=[], nargs='*')
+    # The countries we run the simulation for.  (Unspecified means all countries.)
+
 args = parser.parse_args()
 
 class Model:
@@ -382,6 +385,7 @@ world_estimated_cases = np.zeros(len(history_dates))
 for k, p in sorted(places.items()):
     N = p.population
     if N is None: continue
+    if args.countries and k[0] not in args.countries: continue
 
     present_date = p.deaths.last_date()
     print("Place =", p.region_id())
@@ -534,7 +538,7 @@ for k, p in sorted(places.items()):
             's', label='D emp.')
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
-    plt.savefig(os.path.join('graphs', p.region_id() + '.png'))
+    plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=300)
     plt.close('all') # Reset plot for next time.
 
 # Output world history table:
