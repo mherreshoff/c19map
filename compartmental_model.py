@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import collections
 import contextlib
 import csv
@@ -19,49 +20,55 @@ import sys
 from common import *
 
 
+parser = argparse.ArgumentParser(description=\
+        """Read the intervention data and run our model on it, outputting predictions.""")
 # Model parameters:
-LATENT_PERIOD = 3.5
+parser.add_argument("--latent_period", default=3.5, type=float)
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
     # Citation: 3 studies in the Midas Database with fairly close agreement.
-INFECTIOUS_PERIOD = 4.2
+parser.add_argument("--infectious_period", default=4.2, type=float)
     # 1/gamma - The average length of time a person stays infectious
     # Currently an average of MIDAS Database results for "Time From Symptom Onset To Hospitalization".
     # Heuristic approximation because infectious period may start before symptoms.
-P_HOSPITAL = 0.0714
+parser.add_argument("--p_hospital", default=0.0714, type=float)
     # Probability an infectious case gets hospitalized
     # We divided the IFR estimate by the probability of death given hospitalization, below, to get the probability of
     # hospitalization.
-HOSPITAL_DURATION = 9.75
+parser.add_argument("--hospital_duration", default=0.0714, type=float)
     # Average length of hospital stay.
     # Note: hospital stays for dying people and recovering people aren't the same length.
     # We use the duration for dying people, because care about the accuracy of
     # the death curve more.
     # 11.2 -> https://www.medrxiv.org/content/10.1101/2020.02.07.20021154v1
     # 8.3 -> https://www.medrxiv.org/content/medrxiv/early/2020/01/28/2020.01.26.20018754.full.pdf
-P_DEATH_GIVEN_HOSPITAL = 0.14
+parser.add_argument("--p_death_given_hospital", default=0.14, type=float)
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
+# Empirical growth detection parameters:
+parser.add_argument("--empirical_growth_min_deaths", default=100, type=int)
+    # Minimum number of deaths needed to tune gowth rates.
 
-# Minimum number of deaths needed to tune gowth rates.
-empirical_growth_min_deaths = 100
+parser.add_argument("--empirical_growth_max_pop_frac", default=0.03, type=float)
+    # Largest fraction of the population a growth can be observed at and still be trustworthy.
 
-# Largest fraction of the population a growth can be observed at and still be trustworthy.
-empirical_growth_max_pop_frac = 0.03
+parser.add_argument("--empirical_growth_inv_days", default=20, type=int)
+    # How many days does an intervention have to be in effect before we consider
+    # growth data to represent it.
 
-# How many days does an intervention have to be in effect before we consider
-# growth data to represent it.
-empirical_growth_inv_days = 20
+#Others:
+parser.add_argument("--optimize_lockdown", default=True, type=bool)
+    # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
-# Attempts to run an optimization to find out how beta changes over a typical lockdown.
-OPTIMIZE_LOCKDOWN = True
+parser.add_argument("--debug_lockdown_fit", default=False, type=bool)
+    # Shows a graph of how our lockdown betas fit the data.
 
-# Set to True to see a graph of how our lockdown betas fit the data.
-DEBUG_LOCKDOWN_FIT = False
+parser.add_argument('--tuned_countries',
+        default=['China', 'Japan', 'Korea, South'], nargs='*')
+    # The countries we treat specially
 
-# The countries we treat specially
-tuned_countries = set(['China', 'Japan', 'Korea, South'])
+args = parser.parse_args()
 
 class Model:
     variables = "SEIHDR"
@@ -163,10 +170,10 @@ class Model:
 # Set up a default version of the model:
 model = Model(
         None,
-        LATENT_PERIOD,
-        INFECTIOUS_PERIOD,
-        P_HOSPITAL, HOSPITAL_DURATION,
-        P_DEATH_GIVEN_HOSPITAL)
+        args.latent_period,
+        args.infectious_period,
+        args.p_hospital, args.hospital_duration,
+        args.p_death_given_hospital)
 
 
 # Load the JHU time series data:
@@ -182,7 +189,7 @@ empirical_growths = collections.defaultdict(list)
 
 for p in places.values():
     if p.population is None: continue
-    if p.country in tuned_countries: continue
+    if p.country in args.tuned_countries: continue
 
     # Get the set of dates after a sufficiently long streak of the same intervention:
     stable_dates = set()
@@ -192,15 +199,15 @@ for p in places.values():
         if inv != prev_inv: run = 1
         else: run += 1
         prev_inv = inv
-        if run >= empirical_growth_inv_days:
+        if run >= args.empirical_growth_inv_days:
             stable_dates.add(inv_d)
 
     empirical_growths_here = collections.defaultdict(list)
     for date, d, nd in zip(
             p.deaths.dates(), p.deaths.array(), p.deaths.array()[1:]):
         if date not in stable_dates: continue
-        if d < empirical_growth_min_deaths: continue
-        if d > p.population*empirical_growth_max_pop_frac: continue
+        if d < args.empirical_growth_min_deaths: continue
+        if d > p.population*args.empirical_growth_max_pop_frac: continue
         inv = p.interventions[date]
         growth = nd/d
         empirical_growths_here[inv].append(growth)
@@ -260,7 +267,7 @@ def lockdown_curve_fit(params):
     diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
     return diff
 
-if OPTIMIZE_LOCKDOWN:
+if args.optimize_lockdown:
     lockdown_curve_params = scipy.optimize.minimize(
             lockdown_curve_fit,
             np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
@@ -273,7 +280,7 @@ for k, b in beta_by_intervention.items():
     print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
 
 
-if DEBUG_LOCKDOWN_FIT:
+if args.debug_lockdown_fit:
     trajectories = lockdown_curve_fit_traj(lockdown_curve_params)
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
@@ -400,7 +407,7 @@ for k, p in sorted(places.items()):
     # TODO: cut off when S < .9*N or some such for accuracy.
 
     # Then see how much to scale the death data to G
-    if k[0] in tuned_countries:
+    if k[0] in args.tuned_countries:
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
