@@ -18,6 +18,9 @@ parser.add_argument("--last", default="today", type=date_argument)
 parser.add_argument("--interventions_doc",
         default="1-tj7Cjx3e3eSfFGhhhJTGikaydIclFG1QrD06Eh9oDM")
 parser.add_argument("--interventions_sheet", default="Interventions")
+parser.add_argument("--population_doc",
+        default="1-tj7Cjx3e3eSfFGhhhJTGikaydIclFG1QrD06Eh9oDM")
+parser.add_argument("--population_sheet", default="population")
 parser.add_argument("--sheets_csv_fetcher", default=(
     "https://docs.google.com/spreadsheets/d/{doc}/gviz/tq?tqx=out:csv&sheet={sheet}"))
 parser.add_argument("--JHU_url_format", default=(
@@ -41,6 +44,23 @@ for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print(f"Downloading {file_path} from: {url}")
         urllib.request.urlretrieve(url, file_path)
+
+
+def fetch_population_data():
+    """Download c19map.org's population data."""
+    print("Downloading population data...")
+    csv_url = args.sheets_csv_fetcher.format(
+        doc=args.population_doc, sheet=args.population_sheet)
+    csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
+    csv_source = csv_as_dicts(io.StringIO(csv_str))
+    print("Done.")
+    populations = {}
+    for row in csv_source:
+        country = row["Country/Region"]
+        province = row["Province/State"]
+        key = (country, province, '')
+        populations[key] = int(row["Population"].replace(',', ''))
+    return populations
 
 
 def fetch_intervention_data():
@@ -71,12 +91,13 @@ interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()
 
 # Read population data:
-population = load_population_data()
+population = fetch_population_data()
 
 # Read our JHU data, and reconcile it together:
 canonicalizer = PlaceCanonicalizer()
 places = {}
 interventions_recorded = set()
+populations_recorded = set()
 unknown_interventions_places = set()
 throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
 
@@ -107,6 +128,7 @@ for url, file_name, day in downloads:
             places[p].set_key(p)
             if p in population:
                 places[p].population = population[p]
+                populations_recorded.add(p)
             if p in interventions:
                 places[p].interventions = interventions[p]
                 interventions_recorded.add(p)
@@ -120,6 +142,11 @@ for url, file_name, day in downloads:
         places[p].update('confirmed', day, confirmed)
         places[p].update('deaths', day, deaths)
         places[p].update('recovered', day, recovered)
+
+
+# for p in sorted(population.keys()):
+#     if p not in populations_recorded:
+#         print("Unused population data for: ", p)
 
 for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
