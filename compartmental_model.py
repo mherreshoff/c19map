@@ -23,26 +23,26 @@ from common import *
 parser = argparse.ArgumentParser(description=\
         """Read the intervention data and run our model on it, outputting predictions.""")
 # Model parameters:
-parser.add_argument("--latent_period", default=3.5, type=float)
+parser.add_argument("--latent_period", "--tl", default=3.5, type=float)
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
     # Citation: 3 studies in the Midas Database with fairly close agreement.
-parser.add_argument("--infectious_period", default=4.2, type=float)
+parser.add_argument("--infectious_period", "--ti", default=4.2, type=float)
     # 1/gamma - The average length of time a person stays infectious
     # Currently an average of MIDAS Database results for "Time From Symptom Onset To Hospitalization".
     # Heuristic approximation because infectious period may start before symptoms.
-parser.add_argument("--p_hospital", default=0.0714, type=float)
+parser.add_argument("--p_hospital", "--ph", default=0.0714, type=float)
     # Probability an infectious case gets hospitalized
     # We divided the IFR estimate by the probability of death given hospitalization, below, to get the probability of
     # hospitalization.
-parser.add_argument("--hospital_duration", default=0.0714, type=float)
+parser.add_argument("--hospital_duration", "--th", default=9.75, type=float)
     # Average length of hospital stay.
     # Note: hospital stays for dying people and recovering people aren't the same length.
     # We use the duration for dying people, because care about the accuracy of
     # the death curve more.
     # 11.2 -> https://www.medrxiv.org/content/10.1101/2020.02.07.20021154v1
     # 8.3 -> https://www.medrxiv.org/content/medrxiv/early/2020/01/28/2020.01.26.20018754.full.pdf
-parser.add_argument("--p_death_given_hospital", default=0.14, type=float)
+parser.add_argument("--p_death_given_hospital", "--pd", default=0.14, type=float)
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
@@ -90,6 +90,10 @@ class Model:
         self.hospital_p = hospital_p
         self.hospital_t = hospital_t
         self.death_p = death_p
+
+    def param_str(self):
+        return (f"LT={self.latent_t} IT={self.infectious_t} " +
+        f"HP={self.hospital_p} HT={self.hospital_t} DP={self.death_p}")
 
     @contextlib.contextmanager
     def beta(self, val):
@@ -451,6 +455,10 @@ for k, p in sorted(places.items()):
     world_confirmed += p.confirmed
     world_deaths += p.deaths
     world_estimated_cases += estimated_cases[:len(p.deaths)]
+
+    # Output Estimate:
+    present_est = np.round(estimated_cases[len(p.deaths)-1])
+    print(f"{p.region_id()}\t{model.param_str()}\t{present_est}")
 
     # Output all variables:
     row_start = [k[0], k[1], p.latitude, p.longitude]
