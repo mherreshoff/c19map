@@ -99,7 +99,11 @@ places = {}
 interventions_recorded = set()
 populations_recorded = set()
 unknown_interventions_places = set()
-throw_away_places = set([('US', 'US', ''), ('Australia', '', '')])
+throw_away_places = set([
+    ('US', 'US', ''), ('Australia', '', ''),
+    ('Canada', 'Recovered', ''),
+    ('US', 'Recovered', ''),
+    ])
 
 def first_present(d, ks):
     for k in ks:
@@ -144,9 +148,9 @@ for url, file_name, day in downloads:
         places[p].update('recovered', day, recovered)
 
 
-# for p in sorted(population.keys()):
-#     if p not in populations_recorded:
-#         print("Unused population data for: ", p)
+for p in sorted(places.values(), key=lambda p: p.key()):
+    if p.population is None and p.district == '':
+        print("No population data for ", p.key())
 
 for p in sorted(interventions.keys()):
     if p not in interventions_recorded:

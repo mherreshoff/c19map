@@ -224,7 +224,7 @@ class PlaceCanonicalizer:
         p = tuple(map(self.sanetize, p))
         # Our models aren't about ships, so we ignore them:
         for field in p:
-            for ship_word in ['Cruise Ship', 'Princess']:
+            for ship_word in ['Cruise Ship', 'Princess', 'MS Zaandam']:
                 if ship_word in field:
                     return None
 
