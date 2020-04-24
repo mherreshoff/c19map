@@ -23,26 +23,26 @@ from common import *
 parser = argparse.ArgumentParser(description=\
         """Read the intervention data and run our model on it, outputting predictions.""")
 # Model parameters:
-parser.add_argument("--latent_period", "--tl", default=3.5, type=float)
+parser.add_argument("--latent_period", "--lt", default=3.5, type=float)
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
     # Citation: 3 studies in the Midas Database with fairly close agreement.
-parser.add_argument("--infectious_period", "--ti", default=4.2, type=float)
+parser.add_argument("--infectious_period", "--it", default=4.2, type=float)
     # 1/gamma - The average length of time a person stays infectious
     # Currently an average of MIDAS Database results for "Time From Symptom Onset To Hospitalization".
     # Heuristic approximation because infectious period may start before symptoms.
-parser.add_argument("--p_hospital", "--ph", default=0.0714, type=float)
+parser.add_argument("--p_hospital", "--hp", default=0.0714, type=float)
     # Probability an infectious case gets hospitalized
     # We divided the IFR estimate by the probability of death given hospitalization, below, to get the probability of
     # hospitalization.
-parser.add_argument("--hospital_duration", "--th", default=9.75, type=float)
+parser.add_argument("--hospital_duration", "--ht", default=9.75, type=float)
     # Average length of hospital stay.
     # Note: hospital stays for dying people and recovering people aren't the same length.
     # We use the duration for dying people, because care about the accuracy of
     # the death curve more.
     # 11.2 -> https://www.medrxiv.org/content/10.1101/2020.02.07.20021154v1
     # 8.3 -> https://www.medrxiv.org/content/medrxiv/early/2020/01/28/2020.01.26.20018754.full.pdf
-parser.add_argument("--p_death_given_hospital", "--pd", default=0.14, type=float)
+parser.add_argument("--p_death_given_hospital", "--dp", default=0.14, type=float)
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
