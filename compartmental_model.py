@@ -278,7 +278,7 @@ if args.optimize_lockdown:
     lockdown_curve_params = scipy.optimize.minimize(
             lockdown_curve_fit,
             np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
-    for b,i in enumerate(lockdown_curve_params):
+    for i,b in enumerate(lockdown_curve_params):
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
     beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
