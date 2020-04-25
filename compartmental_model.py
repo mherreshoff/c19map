@@ -243,7 +243,10 @@ for p in places.values():
     deaths_at_lockdown = p.deaths[first_lockdown_date]
     if deaths_at_lockdown < 5: continue
     for i, d in enumerate(p.deaths):
-        deaths_rel_to_lockdown[i-lockdown_idx].append(d/deaths_at_lockdown)
+        delta = i-lockdown_idx
+        inv = p.interventions.extrapolate(p.deaths.date(i))
+        if delta >= 0 and inv != 'Lockdown': break
+        deaths_rel_to_lockdown[delta].append(d/deaths_at_lockdown)
 
 lockdown_death_trend = []
 for k, v in sorted(deaths_rel_to_lockdown.items()):
