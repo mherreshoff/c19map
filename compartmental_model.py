@@ -61,6 +61,9 @@ parser.add_argument("--empirical_growth_inv_days", default=20, type=int)
 parser.add_argument("--optimize_lockdown", default=True, type=bool)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
+parser.add_argument("--graph_back", default=False, type=bool)
+    # Attempts to run an optimization to find out how beta changes over a typical lockdown.
+
 parser.add_argument("--debug_lockdown_fit", default=False, type=bool)
     # Shows a graph of how our lockdown betas fit the data.
 
@@ -435,40 +438,38 @@ for k, p in sorted(places.items()):
     present_date = p.deaths.last_date()
     days_to_present = len(p.deaths) - 1 - start_idx
     days_simulation = days_to_present + graph_days_forecast + 1
-    t = np.arange(days_simulation) - days_to_present
+    t = np.arange(-days_to_present, graph_days_forecast+1)
+    print(t)
     
     y0 = state_scale * equilibrium_state
     y0[0] = N - np.sum(y0)
 
     with model.beta(beta):
         trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+        back_trajectories = odeint(
+                lambda *a: model.derivative(*a), y0,
+                np.arange(-days_to_present, -len(p.deaths)-1, -1))
+    trajectories = np.concatenate((back_trajectories[::-1], trajectories[1:]))
     S, E, I, H, D, R = trajectories.T
 
-    estimated_cases = E+I+H+D+R  # Everyone who's ever been a case.
-    # Pad out our growth curve back to time zero with an exponential.
-    padding = []
-    padding_next = estimated_cases[0]
-    for i in range(start_idx):
-        padding_next /= growth_rate
-        padding.append(padding_next)
-    padding.reverse()
-    estimated_cases = np.concatenate([padding, estimated_cases])
+    cumulative_infections = E+I+H+D+R  # Everyone who's ever been a case.
+    active_infections = E+I+H
 
     # Update world history table:
     world_confirmed += p.confirmed
     world_deaths += p.deaths
-    world_estimated_cases += estimated_cases[:len(p.deaths)]
+    world_estimated_cases += cumulative_infections[:len(p.deaths)]
 
     # Output Estimate:
-    present_est = np.round(estimated_cases[len(p.deaths)-1])
+    present_est = np.round(cumulative_infections[len(p.deaths)-1])
     print(f"{p.region_id()}\t{model.param_str()}\t{present_est}")
 
     # Output all variables:
     row_start = [k[0], k[1], p.latitude, p.longitude]
-    all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,days_to_present])))
+    all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,len(p.deaths)])))
 
     # Output Estimation:
-    latest_estimate = np.round(estimated_cases[len(p.deaths)-1], -3)
+    latest_estimate = np.round(cumulative_infections[len(p.deaths)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
 
@@ -503,14 +504,9 @@ for k, p in sorted(places.items()):
                 for x,p in zip(jhu_fields, prev_jhu_fields)]
         prev_jhu_fields = jhu_fields
 
-        if idx >= start_idx:
-            sim_idx = idx-start_idx
-            estimated_fields = list(trajectories[sim_idx])
-            active_infections = I[sim_idx]+E[sim_idx]+H[sim_idx]
-            cumulative_infections = active_infections + R[sim_idx] + D[sim_idx]
-            estimated_fields += [active_infections, cumulative_infections]
-        else:
-            estimated_fields = ['']*8
+        estimated_fields = list(trajectories[idx])
+        estimated_fields += [active_infections[idx], cumulative_infections[idx]]
+
         estimated_per10k_fields = [per10k(s) for s in estimated_fields]
         if prev_estimated_fields is None:
             estimated_delta_fields = ['']*len(estimated_fields)
@@ -543,10 +539,13 @@ for k, p in sorted(places.items()):
     ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
+    t = np.arange(-len(p.deaths), graph_days_forecast+1)
+    if args.graph_back: s = 0
+    else: s = start_idx
     for var, curve in zip(Model.variables, trajectories.T):
-        ax.semilogy(t, curve, label=var)
-    ax.semilogy(t[0:days_to_present+1], p.deaths[start_idx:],
-            's', label='D emp.')
+        ax.semilogy(t[s:], curve[s:], label=var)
+    ax.semilogy(t[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
+    ax.semilogy(t[s:len(p.deaths)], p.confirmed[s:], 's', label='Conf.')
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
     plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=300)
