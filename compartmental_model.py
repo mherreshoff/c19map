@@ -61,8 +61,8 @@ parser.add_argument("--empirical_growth_inv_days", default=20, type=int)
 parser.add_argument("--optimize_lockdown", default=True, type=bool)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
-parser.add_argument("--lockdown_warmup", default=14, type=int)
-    # Attempts to run an optimization to find out how beta changes over a typical lockdown.
+parser.add_argument("--lockdown_warmup", default=28, type=int)
+    # How many days it takes for a lockdown to reach 100% effect.
 
 parser.add_argument("--graph_back", action='store_true')
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
@@ -70,12 +70,14 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--debug_lockdown_fit", action='store_true')
     # Shows a graph of how our lockdown betas fit the data.
 
-parser.add_argument('--tuned_countries',
-        default=['China', 'Japan', 'Korea, South'], nargs='*')
-    # The countries we treat specially
+parser.add_argument('--tuned_countries', default=[], nargs='*')
+    # TODO: Tuning appears to be broken.
+    # Old: default=['China', 'Japan', 'Korea, South'], nargs='*')
 
 parser.add_argument('-c', '--countries', default=[], nargs='*')
-    # The countries we run the simulation for.  (Unspecified means all countries.)
+parser.add_argument('-p', '--places', default=[], nargs='*')
+    # The countries/places we run the simulation for.
+    # If neither is specified we run on everything.
 
 args = parser.parse_args()
 
@@ -286,7 +288,8 @@ def lockdown_curve_fit(params):
 if args.optimize_lockdown:
     lockdown_curve_params = scipy.optimize.minimize(
             lockdown_curve_fit,
-            np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float)).x
+            np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float),
+            bounds=[(0, None)]*2).x
     for i,b in enumerate(lockdown_curve_params):
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
@@ -399,6 +402,7 @@ for k, p in sorted(places.items()):
     N = p.population
     if N is None: continue
     if args.countries and k[0] not in args.countries: continue
+    if args.places and ':'.join(k) not in args.places: continue
 
     present_date = p.deaths.last_date()
     print("Place =", p.region_id())
