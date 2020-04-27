@@ -400,25 +400,33 @@ for k, p in sorted(places.items()):
     present_date = p.deaths.last_date()
     print("Place =", p.region_id())
 
-    # We find the first death and start simulating from there
-    # with the population set really big.
+    # We find start_idx, the first death or first intervention.
     nz_deaths, = np.nonzero(p.deaths)
     if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", p.region_id())
         continue
     start_idx = nz_deaths[0]
+    for i in range(start_idx):
+        if p.interventions.extrapolate(p.deaths.date(i)) != 'No Intervention':
+            start_idx = i
+            break
+
+    # Next we simulate starting from one death at start_idx, and a very large population.
     fit_length = len(p.deaths)-start_idx
     beta = interventions_to_beta_fn(p.interventions, present_date)
+    with model.beta(beta_by_intervention['No Intervention']):
+        growth_rate, equilibrium_state = model.equilibrium()
+    t = np.arange(fit_length) - (fit_length+1)
+    target = p.deaths[start_idx:]
+    y0 = equilibrium_state.copy()
+    large_pop = 10**10
+    y0[0] = large_pop - np.sum(y0)
     with model.beta(beta):
-        growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
-        t = np.arange(fit_length) - (fit_length+1)
-        target = p.deaths[start_idx:]
-        y0 = equilibrium_state.copy()
-        y0[0] = (10**9) - np.sum(y0)
-
         trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
-        S, E, I, H, D, R = trajectories.T
-    # TODO: cut off when S < .9*N or some such for accuracy.
+    trajectories = trajectories[trajectories[:,0] > large_pop*0.9]
+      # Only keep the parts of the trajectory where less than 1/10 got infected.
+    S, E, I, H, D, R = trajectories.T
+    target = target[:len(D)]
 
     # Then see how much to scale the death data to G
     if k[0] in args.tuned_countries:
@@ -427,7 +435,8 @@ for k, p in sorted(places.items()):
                 loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
         beta = interventions_to_beta_fn(
                 p.interventions, present_date, gr_pow)
-        with model.beta(beta):
+        no_inv_beta = model.growth_rate_to_beta(no_inv_gr**gr_pow)
+        with model.beta(no_inv_beta):
             growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
         # Recompute the equilibrium since we've altered the model.
     else:
@@ -445,8 +454,7 @@ for k, p in sorted(places.items()):
 
     with model.beta(beta):
         trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
-    no_inv_gr = fixed_growth_by_inv['No Intervention']
-    # Approximate early history before start_idx by downscaling by the no-intervention growth rate.
+    # Get the early history before start_idx by downscaling by the no-intervention growth rate.
     pre_history = np.outer(
             np.power(fixed_growth_by_inv['No Intervention'], np.arange(-start_idx,0)),
             trajectories[0])
