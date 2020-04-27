@@ -180,6 +180,15 @@ french_polynesia.confirmed[idx] = french_polynesia.confirmed[prev_idx]
 french_polynesia.deaths[idx] = french_polynesia.deaths[prev_idx]
 french_polynesia.recovered[idx] = french_polynesia.recovered[prev_idx]
 
+# Hubei China suddenly increased their reported deaths on April 17th.
+# Until we know what happened before then, we're scaling everything up:
+hubei = places[('China', 'Hubei', '')]
+idx = datetime.date(2020, 4, 17)
+prev_idx = idx - datetime.timedelta(1)
+scaling_factor = hubei.deaths[idx]/hubei.deaths[prev_idx]
+pos = hubei.deaths.date_to_position(idx)
+new_deaths = hubei.deaths.array()[:pos] * scaling_factor
+hubei.deaths.array()[:pos] = new_deaths.astype(int)
 
 # Output the CSVs:
 confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
