@@ -405,8 +405,10 @@ for k, p in sorted(places.items()):
     if len(nz_deaths) == 0:
         print("No deaths recorded, skipping: ", p.region_id())
         continue
-    start_idx = nz_deaths[0]
-    for i in range(start_idx):
+    first_death = nz_deaths[0]
+
+    start_idx = first_death
+    for i in range(first_death):
         if p.interventions.extrapolate(p.deaths.date(i)) != 'No Intervention':
             start_idx = i
             break
@@ -432,7 +434,7 @@ for k, p in sorted(places.items()):
     if k[0] in args.tuned_countries:
         def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
         gr_pow, state_scale = scipy.optimize.minimize(
-                loss, [1,1], bounds=[(.2, 1), (.01, 100)]).x
+                loss, [1,1], bounds=[(0.2, 1), (0.001, 1000)]).x
         beta = interventions_to_beta_fn(
                 p.interventions, present_date, gr_pow)
         no_inv_beta = model.growth_rate_to_beta(no_inv_gr**gr_pow)
@@ -441,7 +443,7 @@ for k, p in sorted(places.items()):
         # Recompute the equilibrium since we've altered the model.
     else:
         def loss(s): return np.linalg.norm(D*s-target)
-        state_scale = scipy.optimize.minimize_scalar(loss, bounds=(.01, 100)).x
+        state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
         gr_pow = None
 
     present_date = p.deaths.last_date()
@@ -553,7 +555,7 @@ for k, p in sorted(places.items()):
     ax.set_ylabel('People (log)')
     t = np.arange(-len(p.deaths)+1, graph_days_forecast+1)
     if args.graph_back: s = 0
-    else: s = start_idx
+    else: s = first_death
     for var, curve in zip(Model.variables, trajectories.T):
         ax.semilogy(t[s:], curve[s:], label=var)
     ax.semilogy(t[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
