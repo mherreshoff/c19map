@@ -43,6 +43,8 @@ class csv_as_dicts:
 
 def parse_date(s):
     if s == "today": return datetime.date.today()
+    elif s == "yesterday": return datetime.date.today() - datetime.timedelta(1)
+    elif s == "tomorrow": return datetime.date.today() + datetime.timedelta(1)
     try: return dateutil.parser.parse(s).date()
     except ValueError: return None
 
