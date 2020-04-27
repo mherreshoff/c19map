@@ -513,10 +513,10 @@ for k, p in sorted(places.items()):
                 intervention, p.population]
         def per10k(x):
             if x == '': return ''
-            return np.round(10000*x/p.population)
+            return int(np.round(10000*x/p.population))
         def round_delta(x, y):
             if x == '' or y == '': return ''
-            return np.round(x-y)
+            return int(np.round(x-y))
 
         jhu_fields = [p.confirmed[idx], p.deaths[idx]]
         jhu_per10k_fields = [per10k(s) for s in jhu_fields]
