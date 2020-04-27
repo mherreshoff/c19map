@@ -61,10 +61,13 @@ parser.add_argument("--empirical_growth_inv_days", default=20, type=int)
 parser.add_argument("--optimize_lockdown", default=True, type=bool)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
-parser.add_argument("--graph_back", default=False, type=bool)
+parser.add_argument("--lockdown_warmup", default=14, type=int)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
-parser.add_argument("--debug_lockdown_fit", default=False, type=bool)
+parser.add_argument("--graph_back", action='store_true')
+    # Attempts to run an optimization to find out how beta changes over a typical lockdown.
+
+parser.add_argument("--debug_lockdown_fit", action='store_true')
     # Shows a graph of how our lockdown betas fit the data.
 
 parser.add_argument('--tuned_countries',
@@ -266,7 +269,7 @@ ts = np.arange(len(lockdown_death_trend))
 
 def lockdown_curve_beta(params):
     def beta(t):
-        return np.interp(t, [0, 14], params)
+        return np.interp(t, [0, args.lockdown_warmup], params)
     return beta
 
 
