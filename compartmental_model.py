@@ -361,9 +361,9 @@ growth_rate_w.writerow(headers)
 
 
 output_comprehensive_series_w = csv.writer(
-        open('output_comprehensive_series.csv', 'w'))
+        open('c19map.org_v2.0_Model_Data_-_Time_Series.csv', 'w'))
 output_comprehensive_snapshot_w = csv.writer(
-        open('output_comprehensive_snapshot.csv', 'w'))
+        open('c19map.org_v2.0_Model_Data_-_Snapshot.csv', 'w'))
 headers = ["Region ID", "Date",
         "Display Name", "Country/Region", "Province/State",
         "Latitude", "Longitude",
