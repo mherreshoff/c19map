@@ -439,17 +439,21 @@ for k, p in sorted(places.items()):
     days_to_present = len(p.deaths) - 1 - start_idx
     days_simulation = days_to_present + graph_days_forecast + 1
     t = np.arange(-days_to_present, graph_days_forecast+1)
-    print(t)
     
     y0 = state_scale * equilibrium_state
     y0[0] = N - np.sum(y0)
 
     with model.beta(beta):
         trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
-        back_trajectories = odeint(
-                lambda *a: model.derivative(*a), y0,
-                np.arange(-days_to_present, -len(p.deaths)-1, -1))
-    trajectories = np.concatenate((back_trajectories[::-1], trajectories[1:]))
+    no_inv_gr = fixed_growth_by_inv['No Intervention']
+    # Approximate early history before start_idx by downscaling by the no-intervention growth rate.
+    pre_history = np.outer(
+            np.power(fixed_growth_by_inv['No Intervention'], np.arange(-start_idx,0)),
+            trajectories[0])
+    # This works for all variables except S, so we have to fix S:
+    pre_history[:,0] = N - pre_history[:,1:].sum(axis=1)
+
+    trajectories = np.concatenate((pre_history, trajectories))
     S, E, I, H, D, R = trajectories.T
 
     cumulative_infections = E+I+H+D+R  # Everyone who's ever been a case.
@@ -539,7 +543,7 @@ for k, p in sorted(places.items()):
     ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
     ax.set_ylabel('People (log)')
-    t = np.arange(-len(p.deaths), graph_days_forecast+1)
+    t = np.arange(-len(p.deaths)+1, graph_days_forecast+1)
     if args.graph_back: s = 0
     else: s = start_idx
     for var, curve in zip(Model.variables, trajectories.T):
