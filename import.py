@@ -84,8 +84,6 @@ def fetch_intervention_data():
     date_cols = sorted((d, s) for d, s in date_cols if d is not None)
     for d, d2 in zip(date_cols, date_cols[1:]):
         assert (d2[0]-d[0]).days == 1, "Dates must be consecutive.  Did a column get deleted?"
-    date_cols = [(d,s) for d,s in date_cols if d <= args.last]
-        # Ignore columns that are in the future.
     start_date = date_cols[0][0]
     unknown = TimeSeries(start_date, ['Unknown']*len(date_cols))
 
@@ -93,7 +91,15 @@ def fetch_intervention_data():
     for row in csv_source:
         place = (row['Country/Region'], row['Province/State'], '')
         assert place not in interventions, f"Duplicate row for place {place}"
-        intervention_list = [row[s] for d,s in date_cols]
+        intervention_list = []
+        prev_state = 'No Intervention'
+        for d, s in date_cols:
+            cell = row[s]
+            if s == '':
+                intervention_list.append(prev_state)
+            else:
+                intervention_list.append(cell)
+                prev_state = cell
         interventions[place] = TimeSeries(start_date, intervention_list)
     return interventions, unknown
 
