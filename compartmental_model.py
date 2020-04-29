@@ -81,6 +81,14 @@ parser.add_argument('-p', '--places', default=[], nargs='*')
 
 args = parser.parse_args()
 
+# Graph Colors:
+INTERVENTION_COLORS = {
+        'Lockdown': '#444444',
+        'Social Distancing': '#aaaaaa',
+        'No Intervention': '#ffaaaa',
+        'Unknown': '#aaffaa',
+}
+
 class Model:
     variables = "SEIHDR"
     var_to_id = {v: i for i, v in enumerate(variables)}
@@ -563,6 +571,12 @@ for k, p in sorted(places.items()):
     t = np.arange(-len(p.deaths)+1, graph_days_forecast+1)
     if args.graph_back: s = 0
     else: s = first_death
+
+
+    for inv_d, inv_str in intervention_starts:
+        inv_t = (inv_d-present_date).days
+        ax.axvline(inv_t, 0, 1, linestyle='dashed',
+                color=INTERVENTION_COLORS[inv_str])
     for var, curve in zip(Model.variables, trajectories.T):
         ax.semilogy(t[s:], curve[s:], label=var)
     ax.semilogy(t[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
