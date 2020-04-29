@@ -49,7 +49,7 @@ def fetch_raw_jhu_data(dates):
                 print(f"The fetch failed with code {e.code}: {e.reason}")
                 if e.code == 404:
                     print(f"It seems JHU has not yet published the data for {date.isoformat()}.")
-                sys.exit(0)
+                sys.exit(1)
         jhu_data[date] = csv_as_dicts(open(file_path, encoding='utf-8-sig'))
         # Note: utf-8-sig gets rid of unicode byte order mark characters.
     return jhu_data
