@@ -8,6 +8,7 @@ import numpy as np
 import os
 import pickle
 import urllib.request
+import sys
 
 from common import *
 
@@ -43,7 +44,15 @@ maybe_makedir(args.JHU_data_dir)
 for url, file_path, day in downloads:
     if not os.path.exists(file_path):
         print(f"Downloading {file_path} from: {url}")
-        urllib.request.urlretrieve(url, file_path)
+        try:
+            urllib.request.urlretrieve(url, file_path)
+        except urllib.error.HTTPError as e:
+            print(f"Couldn't fetch: {url}")
+            if e.code == 404:
+                print(f"It seems JHU has not yet published the data for day {day}.")
+            else:
+                print("The fetch failed with code {e.code}: {e.reason}")
+            sys.exit(0)
 
 
 def fetch_population_data():
