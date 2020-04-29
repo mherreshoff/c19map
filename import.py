@@ -161,9 +161,25 @@ for date, row_source in raw_jhu_data.items():
         places[p].update('recovered', date, recovered)
 
 
+# These are the countries we already weren't bothering to simulate.
+# By silencing them, these warnings can flag that a country got misspelt
+# in or deleted from the population table (or JHU added a new country.)
+SILENCE_POPULATION_WARNINGS = set([
+    ('Australia', 'External territories', ''),
+    ('Australia', 'Jervis Bay Territory', ''),
+    ('France', 'Saint Pierre and Miquelon', ''),
+    ('Netherlands', 'Bonaire, Sint Eustatius and Saba', ''),
+    ('United Kingdom', 'Anguilla', ''),
+    ('United Kingdom', 'British Virgin Islands', ''),
+    ('United Kingdom', 'Falkland Islands (Islas Malvinas)', ''),
+    ('United Kingdom', 'Falkland Islands (Malvinas)', ''),
+    ('United Kingdom', 'Turks and Caicos Islands', ''),
+    ('West Bank and Gaza', '', '')])
+
 for p in sorted(places.values(), key=lambda p: p.key()):
     if p.population is None and p.district == '':
-        print("No population data for ", p.key())
+        if p.key() not in SILENCE_POPULATION_WARNINGS:
+            print("No population data for ", p.region_id())
 
 for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
