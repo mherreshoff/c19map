@@ -84,6 +84,8 @@ def fetch_intervention_data():
     date_cols = sorted((d, s) for d, s in date_cols if d is not None)
     for d, d2 in zip(date_cols, date_cols[1:]):
         assert (d2[0]-d[0]).days == 1, "Dates must be consecutive.  Did a column get deleted?"
+    date_cols = [(d,s) for d,s in date_cols if d <= args.last]
+        # Ignore columns that are in the future.
     start_date = date_cols[0][0]
     unknown = TimeSeries(start_date, ['Unknown']*len(date_cols))
 
