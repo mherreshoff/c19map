@@ -12,6 +12,7 @@ import sys
 
 from common import *
 
+# --------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
 parser.add_argument("--start", default="2020-01-22", type=date_argument)
@@ -31,28 +32,27 @@ parser.add_argument('--JHU_data_dir', default='JHU_data')
 args = parser.parse_args()
 
 
-# Download Johns Hopkins Data:
-dates = list(date_range_inclusive(args.start, args.last))
+# --------------------------------------------------------------------------------
+# Funtions which fetch data from JHU's github and our spreadsheets.
 
-downloads = []
-for n, d in enumerate(dates):
-    url = d.strftime(args.JHU_url_format)
-    file_path = os.path.join(args.JHU_data_dir, d.isoformat() + ".csv")
-    downloads.append([url, file_path, n])
-
-maybe_makedir(args.JHU_data_dir)
-for url, file_path, day in downloads:
-    if not os.path.exists(file_path):
-        print(f"Downloading {file_path} from: {url}")
-        try:
-            urllib.request.urlretrieve(url, file_path)
-        except urllib.error.HTTPError as e:
-            print(f"Couldn't fetch: {url}")
-            if e.code == 404:
-                print(f"It seems JHU has not yet published the data for day {day}.")
-            else:
-                print("The fetch failed with code {e.code}: {e.reason}")
-            sys.exit(0)
+def fetch_raw_jhu_data(dates):
+    jhu_data = {}
+    for date in dates:
+        url = date.strftime(args.JHU_url_format)
+        file_path = os.path.join(args.JHU_data_dir, date.isoformat() + ".csv")
+        if not os.path.exists(file_path):
+            print(f"Downloading {file_path} from: {url}")
+            try:
+                urllib.request.urlretrieve(url, file_path)
+            except urllib.error.HTTPError as e:
+                print(f"Couldn't fetch: {url}")
+                print(f"The fetch failed with code {e.code}: {e.reason}")
+                if e.code == 404:
+                    print(f"It seems JHU has not yet published the data for {date.isoformat()}.")
+                sys.exit(0)
+        jhu_data[date] = csv_as_dicts(open(file_path, encoding='utf-8-sig'))
+        # Note: utf-8-sig gets rid of unicode byte order mark characters.
+    return jhu_data
 
 
 def fetch_population_data():
@@ -95,19 +95,24 @@ def fetch_intervention_data():
         interventions[place] = TimeSeries(start_date, intervention_list)
     return interventions, unknown
 
+# --------------------------------------------------------------------------------
+# Load our inputs:
 
+dates = date_range_inclusive(args.start, args.last)
 interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()
-
-# Read population data:
 population = fetch_population_data()
+raw_jhu_data = fetch_raw_jhu_data(dates)
 
-# Read our JHU data, and reconcile it together:
+
+# --------------------------------------------------------------------------------
+# Reconcile the data together into one `Place` object for each region.
 canonicalizer = PlaceCanonicalizer()
 places = {}
 interventions_recorded = set()
 populations_recorded = set()
 unknown_interventions_places = set()
+
 throw_away_places = set([
     ('US', 'US', ''), ('Australia', '', ''),
     ('Canada', 'Recovered', ''),
@@ -119,9 +124,8 @@ def first_present(d, ks):
         if k in d: return d[k]
     return None
 
-for url, file_name, day in downloads:
-    for keyed_row in csv_as_dicts(open(file_name, encoding='utf-8-sig')):
-        # Note: utf-8-sig is there to get rid of unicode byte order mark characters.
+for date, row_source in raw_jhu_data.items():
+    for keyed_row in row_source:
         country = first_present(keyed_row, ['Country_Region', 'Country/Region'])
         province = first_present(keyed_row, ['Province_State', 'Province/State'])
         district = first_present(keyed_row, ['Admin2']) or ''
@@ -152,9 +156,9 @@ for url, file_name, day in downloads:
         if latitude is not None and longitude is not None:
             places[p].latitude = latitude
             places[p].longitude = longitude
-        places[p].update('confirmed', day, confirmed)
-        places[p].update('deaths', day, deaths)
-        places[p].update('recovered', day, recovered)
+        places[p].update('confirmed', date, confirmed)
+        places[p].update('deaths', date, deaths)
+        places[p].update('recovered', date, recovered)
 
 
 for p in sorted(places.values(), key=lambda p: p.key()):

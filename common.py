@@ -56,11 +56,13 @@ def date_argument(s):
 
 
 def date_range_inclusive(start_date, end_date, delta=None):
+    r = []
     if delta is None: delta = datetime.timedelta(1)
     date = start_date
     while date <= end_date:
-        yield date
+        r.append(date)
         date += delta
+    return r
 
 
 def maybe_makedir(dirname):
