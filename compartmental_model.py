@@ -565,10 +565,10 @@ for k, p in sorted(places.items()):
             for n,(d,s) in enumerate(intervention_starts))
     ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Date')
+    ax.xaxis.set_tick_params(labelsize=7)
     ax.set_ylabel('People (log)')
     plt.grid(True)
-    date_form = matplotlib.dates.DateFormatter("%m-%d")
-    ax.xaxis.set_major_formatter(date_form)
+    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m-%d"))
     graph_dates = date_range_inclusive(
             p.deaths.start_date(),
             p.deaths.last_date() + datetime.timedelta(graph_days_forecast))
