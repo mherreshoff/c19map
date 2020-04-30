@@ -6,6 +6,7 @@ import csv
 import datetime
 import dateutil.parser
 import functools
+import matplotlib.dates
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -82,12 +83,6 @@ parser.add_argument('-p', '--places', default=[], nargs='*')
 args = parser.parse_args()
 
 # Graph Colors:
-INTERVENTION_COLORS = {
-        'Lockdown': '#444444',
-        'Social Distancing': '#aaaaaa',
-        'No Intervention': '#ffaaaa',
-        'Unknown': '#aaffaa',
-}
 
 class Model:
     variables = "SEIHDR"
@@ -302,6 +297,8 @@ if args.optimize_lockdown:
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
     beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
+    beta_by_intervention['Containment'] = constant_fn(lockdown_curve_params[1]/2)
+        # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
 for k, b in beta_by_intervention.items():
     print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
@@ -566,23 +563,26 @@ for k, p in sorted(places.items()):
     intervention_s = ', '.join(
             s+" on "+d.isoformat() for d,s in intervention_starts)
     ax.set_title(p.region_id() + "\n" + intervention_s)
-    ax.set_xlabel('Days (0 is '+present_date.isoformat()+')')
+    ax.set_xlabel('Date')
     ax.set_ylabel('People (log)')
-    t = np.arange(-len(p.deaths)+1, graph_days_forecast+1)
+    date_form = matplotlib.dates.DateFormatter("%m-%d")
+    ax.xaxis.set_major_formatter(date_form)
+    graph_dates = date_range_inclusive(
+            p.deaths.start_date(),
+            p.deaths.last_date() + datetime.timedelta(graph_days_forecast))
     if args.graph_back: s = 0
     else: s = first_death
 
-
+    ax.axvline(present_date, 0, 1, linestyle='solid', color='black')
     for inv_d, inv_str in intervention_starts:
-        inv_t = (inv_d-present_date).days
-        ax.axvline(inv_t, 0, 1, linestyle='dashed',
-                color=INTERVENTION_COLORS[inv_str])
+        ax.axvline(inv_d, 0, 1, linestyle='dashed', color='#aaaaaa')
     for var, curve in zip(Model.variables, trajectories.T):
-        ax.semilogy(t[s:], curve[s:], label=var)
-    ax.semilogy(t[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
-    ax.semilogy(t[s:len(p.deaths)], p.confirmed[s:], 's', label='Conf.')
+        ax.semilogy(graph_dates[s:], curve[s:], label=var)
+    ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
+    ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's', label='Conf.')
     legend = ax.legend()
     legend.get_frame().set_alpha(0.5)
+    plt.grid(True)
     plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=300)
     plt.close('all') # Reset plot for next time.
 
