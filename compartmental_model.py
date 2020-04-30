@@ -87,7 +87,7 @@ args = parser.parse_args()
 class Model:
     variables = "SEIHDR"
     var_to_id = {v: i for i, v in enumerate(variables)}
-    variable_names = ['Susceptible', 'Exposed', 'Infected',
+    variable_names = ['Susceptible', 'Exposed', 'Infectious',
             'Hospitalized', 'Dead', 'Recovered']
     # The SEIHDR Model.
     # An extension of the SEIR model.
@@ -552,6 +552,7 @@ for k, p in sorted(places.items()):
             output_comprehensive_snapshot_w.writerow(all_fields)
 
     # Graphs:
+    plt.style.use('seaborn-dark')
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
 
@@ -560,11 +561,12 @@ for k, p in sorted(places.items()):
     for d,s in p.interventions.items():
         if s!=old_s: intervention_starts.append((d, s))
         old_s = s
-    intervention_s = ', '.join(
-            s+" on "+d.isoformat() for d,s in intervention_starts)
+    intervention_s = ', '.join(f"{s} on {d.strftime('%m-%d')}"
+            for n,(d,s) in enumerate(intervention_starts))
     ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Date')
     ax.set_ylabel('People (log)')
+    plt.grid(True)
     date_form = matplotlib.dates.DateFormatter("%m-%d")
     ax.xaxis.set_major_formatter(date_form)
     graph_dates = date_range_inclusive(
@@ -573,16 +575,24 @@ for k, p in sorted(places.items()):
     if args.graph_back: s = 0
     else: s = first_death
 
-    ax.axvline(present_date, 0, 1, linestyle='solid', color='black')
-    for inv_d, inv_str in intervention_starts:
-        ax.axvline(inv_d, 0, 1, linestyle='dashed', color='#aaaaaa')
-    for var, curve in zip(Model.variables, trajectories.T):
+    ax.axvline(present_date, 0, 1, linestyle='solid', color='black',
+            label='Today')
+
+    inv_colors = ["#9eb1bb", "#7d97a5", "#607d8b", "#57707d", "#4d636f"]
+    for n, (inv_d, inv_str) in enumerate(intervention_starts):
+        ax.axvline(inv_d, 0, 1, linestyle='dashed',
+                color=inv_colors[n%len(inv_colors)],
+                label=inv_str)
+    for var, curve in zip(Model.variable_names, trajectories.T):
         ax.semilogy(graph_dates[s:], curve[s:], label=var)
-    ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's', label='D emp.')
-    ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's', label='Conf.')
-    legend = ax.legend()
-    legend.get_frame().set_alpha(0.5)
-    plt.grid(True)
+    ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's',
+            label='JHU deaths')
+    ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
+            label='JHU confirmed')
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
+    legend = ax.legend(bbox_to_anchor=(1.04,1), loc='upper left',
+            fontsize='xx-small', borderaxespad=0)
     plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=300)
     plt.close('all') # Reset plot for next time.
 
