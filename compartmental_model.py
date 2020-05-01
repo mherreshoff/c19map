@@ -598,8 +598,8 @@ for k, p in sorted(places.items()):
             label='JHU confirmed')
     if not args.graph_bottom: plt.ylim(bottom=1)
     ymin, ymax = ax.get_ylim()
-    ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= maximum])
-    ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= maximum], minor=True)
+    ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= ymax])
+    ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= ymax], minor=True)
 
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
