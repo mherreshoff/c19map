@@ -68,6 +68,9 @@ parser.add_argument("--lockdown_warmup", default=28, type=int)
 parser.add_argument("--graph_back", action='store_true')
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
+parser.add_argument("--graph_bottom", action='store_true')
+    # Shows y-values < 1 in the graph outputs.
+
 parser.add_argument("--debug_lockdown_fit", action='store_true')
     # Shows a graph of how our lockdown betas fit the data.
 
@@ -552,7 +555,6 @@ for k, p in sorted(places.items()):
             output_comprehensive_snapshot_w.writerow(all_fields)
 
     # Graphs:
-    plt.style.use('seaborn-dark')
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
 
@@ -565,10 +567,15 @@ for k, p in sorted(places.items()):
             for n,(d,s) in enumerate(intervention_starts))
     ax.set_title(p.region_id() + "\n" + intervention_s)
     ax.set_xlabel('Date')
-    ax.xaxis.set_tick_params(labelsize=7)
+    ax.xaxis.set_tick_params(which='both', labelsize=5, labelrotation=90)
+    ax.xaxis.set_major_locator(matplotlib.dates.DayLocator(bymonthday=[1,15]))
+    minor_locator = matplotlib.dates.DayLocator(bymonthday=[1]+list(range(5,26,5)))
+    ax.xaxis.set_minor_locator(minor_locator)
+    minor_formatter = matplotlib.dates.ConciseDateFormatter(minor_locator, show_offset=False)
+    ax.xaxis.set_major_formatter(minor_formatter)
+    ax.xaxis.set_minor_formatter(minor_formatter)
     ax.set_ylabel('People (log)')
     plt.grid(True)
-    ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%m-%d"))
     graph_dates = date_range_inclusive(
             p.deaths.start_date(),
             p.deaths.last_date() + datetime.timedelta(graph_days_forecast))
@@ -589,6 +596,11 @@ for k, p in sorted(places.items()):
             label='JHU deaths')
     ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
             label='JHU confirmed')
+    if not args.graph_bottom: plt.ylim(bottom=1)
+    ymin, ymax = ax.get_ylim()
+    ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= maximum])
+    ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= maximum], minor=True)
+
     box = ax.get_position()
     ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
     legend = ax.legend(bbox_to_anchor=(1.04,1), loc='upper left',
