@@ -107,10 +107,10 @@ def fetch_intervention_data():
 # Load our inputs:
 
 dates = date_range_inclusive(args.start, args.last)
+raw_jhu_data = fetch_raw_jhu_data(dates)
 interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()
 population = fetch_population_data()
-raw_jhu_data = fetch_raw_jhu_data(dates)
 
 
 # --------------------------------------------------------------------------------
