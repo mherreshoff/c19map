@@ -169,6 +169,9 @@ for date, row_source in raw_jhu_data.items():
         places[p].update('recovered', date, recovered)
 
 
+# --------------------------------------------------------------------------------
+# Warnings for catching missing data.
+
 # These are the countries we already weren't bothering to simulate.
 # By silencing them, these warnings can flag that a country got misspelt
 # in or deleted from the population table (or JHU added a new country.)
@@ -193,41 +196,64 @@ for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
         print("Lost intervention data for: ", p)
 
+
+# --------------------------------------------------------------------------------
+# Edits to the data to fix various artefacts and glitches.
+
 # Consolidate US county data into states:
-for p in sorted(places.keys()):
-    if p[0] == "US" and p[2] != '':
-        state = (p[0], p[1], '')
-        if state not in places:
-            places[state] = Place(dates)
-            places[state].set_key(state)
-            places[state].interventions = intervention_unknown
-        places[state].confirmed += places[p].confirmed
-        places[state].deaths += places[p].deaths
-        places[state].recovered += places[p].recovered
+def consolidate_to_province_level(country):
+    for p in sorted(places.keys()):
+        if p[0] == country and p[2] != '':
+            state = (p[0], p[1], '')
+            if state not in places:
+                places[state] = Place(dates)
+                places[state].set_key(state)
+                if p in population:
+                    places[p].population = population[p]
+                places[state].interventions = intervention_unknown
+            places[state].confirmed += places[p].confirmed
+            places[state].deaths += places[p].deaths
+            places[state].recovered += places[p].recovered
+            del places[p]  # Avoid double-counting.
+
+consolidate_to_province_level("US")
 
 # Fix the fact that France was recorded as French Polynesia on March 23rd:
-france = places[('France', 'France', '')]
-french_polynesia = places[('France', 'French Polynesia', '')]
-idx = datetime.date(2020, 3, 23)
-prev_idx = idx - datetime.timedelta(1)
-france.confirmed[idx] = french_polynesia.confirmed[idx]
-france.deaths[idx] = french_polynesia.deaths[idx]
-france.recovered[idx] = french_polynesia.recovered[idx]
-french_polynesia.confirmed[idx] = french_polynesia.confirmed[prev_idx]
-french_polynesia.deaths[idx] = french_polynesia.deaths[prev_idx]
-french_polynesia.recovered[idx] = french_polynesia.recovered[prev_idx]
+def correct_misrecorded_place(d, correct_p, recorded_p):
+    correct = places[correct_p]
+    recorded = places[recorded_p]
+    prev_d = d - datetime.timedelta(1)
+    correct.confirmed[d] = recorded.confirmed[d]
+    correct.deaths[d] = recorded.deaths[d]
+    correct.recovered[d] = recorded.recovered[d]
+    recorded.confirmed[d] = recorded.confirmed[prev_d]
+    recorded.deaths[d] = recorded.deaths[prev_d]
+    recorded.recovered[d] = recorded.recovered[prev_d]
+
+correct_misrecorded_place(
+        datetime.date(2020, 3, 23),
+        ('France', 'France', ''), ('France', 'French Polynesia', ''))
 
 # Hubei China suddenly increased their reported deaths on April 17th.
-# Until we know what happened before then, we're scaling everything up:
-hubei = places[('China', 'Hubei', '')]
-idx = datetime.date(2020, 4, 17)
-prev_idx = idx - datetime.timedelta(1)
-scaling_factor = hubei.deaths[idx]/hubei.deaths[prev_idx]
-pos = hubei.deaths.date_to_position(idx)
-new_deaths = hubei.deaths.array()[:pos] * scaling_factor
-hubei.deaths.array()[:pos] = new_deaths.astype(int)
+# Until we get better data from before then, we'll scale everything before that date up.
+def correct_late_reporting(p, d):
+    place = places[p]
+    prev_d = d - datetime.timedelta(1)
+    scaling_factor = place.deaths[d]/place.deaths[prev_d]
+    pos = place.deaths.date_to_position(d)
+    new_deaths = place.deaths.array()[:pos] * scaling_factor
+    place.deaths.array()[:pos] = new_deaths.astype(int)
 
-# Output the CSVs:
+correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
+
+# --------------------------------------------------------------------------------
+# Output Data.
+
+pickle_f = open('time_series.pkl', 'wb')
+pickle.dump(places, pickle_f)
+pickle_f.close()
+
+
 confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
 deaths_out = csv.writer(open("time_series_deaths.csv", 'w'))
 recovered_out = csv.writer(open("time_series_recovered.csv", 'w'))
@@ -250,7 +276,3 @@ for p in sorted(places.keys()):
     deaths_out.writerow(row_start + list(places[p].deaths))
     recovered_out.writerow(row_start + list(places[p].recovered))
 
-# Output places dictionary:
-timeseries_f = open('time_series.pkl', 'wb')
-pickle.dump(places, timeseries_f)
-timeseries_f.close()
