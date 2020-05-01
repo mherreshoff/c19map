@@ -48,13 +48,13 @@ parser.add_argument("--p_death_given_hospital", "--dp", default=0.14, type=float
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
 # Empirical growth detection parameters:
-parser.add_argument("--empirical_growth_min_deaths", default=100, type=int)
+parser.add_argument("--empirical_growth_min_deaths", default=20, type=int)
     # Minimum number of deaths needed to tune gowth rates.
 
 parser.add_argument("--empirical_growth_max_pop_frac", default=0.03, type=float)
     # Largest fraction of the population a growth can be observed at and still be trustworthy.
 
-parser.add_argument("--empirical_growth_inv_days", default=20, type=int)
+parser.add_argument("--empirical_growth_min_inv_days", default=20, type=int)
     # How many days does an intervention have to be in effect before we consider
     # growth data to represent it.
 
@@ -202,44 +202,48 @@ places = pickle.load(open('time_series.pkl', 'rb'))
 
 
 # Growth rates, used to calculate betas.
-fixed_growth_by_inv = {}
 
 # Calculate Empirical Growth Rates:
-empirical_growths = collections.defaultdict(list)
+def calculate_empirical_growths(min_deaths, min_inv_days, max_pop_frac):
+    empirical_growths = collections.defaultdict(list)
+    for k, p in sorted(places.items()):
+        if p.population is None: continue
+        if p.country in args.tuned_countries: continue
 
+        # Get the set of dates after a sufficiently long streak of the same intervention:
+        stable_dates = set()
+        prev_inv = p.interventions[0]
+        run = 1000
+        for inv_d, inv in p.interventions.items():
+            if inv != prev_inv: run = 1
+            else: run += 1
+            prev_inv = inv
+            if run >= min_inv_days:
+                stable_dates.add(inv_d)
 
-for p in places.values():
-    if p.population is None: continue
-    if p.country in args.tuned_countries: continue
+        empirical_growths_here = collections.defaultdict(list)
+        for date, d, nd in zip(
+                p.deaths.dates(), p.deaths.array(), p.deaths.array()[1:]):
+            if date not in stable_dates: continue
+            if d < min_deaths: continue
+            if d > p.population*max_pop_frac: continue
+            inv = p.interventions[date]
+            growth = nd/d
+            empirical_growths_here[inv].append(growth)
+        for inv, gs in empirical_growths_here.items():
+            m = scipy.stats.gmean(gs)
+            empirical_growths[inv].append(m)
+    return {p: np.median(gs) for p, gs in empirical_growths.items()}
 
-    # Get the set of dates after a sufficiently long streak of the same intervention:
-    stable_dates = set()
-    prev_inv = p.interventions[0]
-    run = 1000
-    for inv_d, inv in p.interventions.items():
-        if inv != prev_inv: run = 1
-        else: run += 1
-        prev_inv = inv
-        if run >= args.empirical_growth_inv_days:
-            stable_dates.add(inv_d)
+fixed_growth_by_inv = calculate_empirical_growths(
+    args.empirical_growth_min_deaths,
+    args.empirical_growth_min_inv_days,
+    args.empirical_growth_max_pop_frac)
 
-    empirical_growths_here = collections.defaultdict(list)
-    for date, d, nd in zip(
-            p.deaths.dates(), p.deaths.array(), p.deaths.array()[1:]):
-        if date not in stable_dates: continue
-        if d < args.empirical_growth_min_deaths: continue
-        if d > p.population*args.empirical_growth_max_pop_frac: continue
-        inv = p.interventions[date]
-        growth = nd/d
-        empirical_growths_here[inv].append(growth)
-    for inv, gs in empirical_growths_here.items():
-        empirical_growths[inv].append(scipy.stats.gmean(gs))
-
-for k, gs in sorted(empirical_growths.items()):
-    m = np.median(gs)
-    fixed_growth_by_inv[k] = m
-    print(f"Intervention Status \"{k}\" has growth rate {m}")
 fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
+for k, m in fixed_growth_by_inv.items():
+    print(f"Intervention Status \"{k}\" has growth rate {m}")
+
 
 beta_by_intervention = {}
 for k, v in fixed_growth_by_inv.items():
