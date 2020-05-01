@@ -183,7 +183,7 @@ class Model:
 
     def derivative(self, y, t):
         S,E,I,H,D,R = y
-        N = np.sum(y)
+        N = np.sum(y) - D
         m = self.companion_matrix(t=t, correction=S/N)
         return np.matmul(m, y)
 
