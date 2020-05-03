@@ -26,7 +26,7 @@ def model_derivative(y, t, p):
     hospital_leave_rate = p[3]
     hospital_p = p[4]
     death_p = p[5]
-    #N = S+E+I+H+R
+    N = S+E+I+H+R
     correction = S/N
     SE_flow = I*contact_rate*correction
     EI_flow = E*exposed_leave_rate
@@ -76,6 +76,7 @@ with pm.Model() as model:
     deaths_obs = pm.Normal('deaths_obs', mu=deaths_soln, sd=obs_sigma, observed=p.deaths[first_death:])
 
     print(model.profile(model.logpt).summary())
+    print(model.profile(pm.gradient(model.logpt, model.vars)).summary())
 
     prior = pm.sample_prior_predictive()
     trace = pm.sample(20, cores=4)
