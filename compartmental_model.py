@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pickle
-from scipy.integrate import odeint
 import scipy
 import scipy.stats
 import shutil
@@ -187,6 +186,9 @@ class Model:
         m = self.companion_matrix(t=t, correction=S/N)
         return np.matmul(m, y)
 
+    def integrate(self, y0, ts):
+        return scipy.integrate.odeint(lambda *a: self.derivative(*a), y0, ts)
+
 
 # Set up a default version of the model:
 model = Model(
@@ -287,7 +289,7 @@ def lockdown_curve_beta(params):
 
 def lockdown_curve_fit_traj(params):
     with model.beta(lockdown_curve_beta(params)):
-        return odeint(lambda *a: model.derivative(*a), y0, ts)
+        return model.integrate(y0, ts)
 
 
 def lockdown_curve_fit(params):
@@ -443,7 +445,7 @@ for k, p in sorted(places.items()):
     large_pop = 10**10
     y0[0] = large_pop - np.sum(y0)
     with model.beta(beta):
-        trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+        trajectories = model.integrate(y0, t)
     trajectories = trajectories[trajectories[:,0] > large_pop*0.9]
       # Only keep the parts of the trajectory where less than 1/10 got infected.
     S, E, I, H, D, R = trajectories.T
@@ -474,7 +476,7 @@ for k, p in sorted(places.items()):
     y0[0] = N - np.sum(y0)
 
     with model.beta(beta):
-        trajectories = odeint(lambda *a: model.derivative(*a), y0, t)
+        trajectories = model.integrate(y0, t)
     # Get the early history before start_idx by downscaling by the no-intervention growth rate.
     pre_history = np.outer(
             np.power(fixed_growth_by_inv['No Intervention'], np.arange(-start_idx,0)),
