@@ -93,8 +93,9 @@ parser.add_argument('--tuned_countries', default=[], nargs='*')
     # Old: default=['China', 'Japan', 'Korea, South'], nargs='*')
 
 args = parser.parse_args()
-# --------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------------
+# Model
 
 class Model:
     variables = "SEIHDR"
@@ -103,7 +104,7 @@ class Model:
             'Hospitalized', 'Dead', 'Recovered']
     # The SEIHDR Model.
     # An extension of the SEIR model.
-    # TODO link to the google doc here.
+    # See: https://bit.ly/c19map-v2-docs
     def __init__(self,
             contact_rate, latent_t, infectious_t,
             hospital_p, hospital_t, death_p):
