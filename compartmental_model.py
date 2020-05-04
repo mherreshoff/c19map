@@ -196,6 +196,14 @@ class Model:
         return soln.y.T
 
     def integrate_naive(self, y0, ts):
+        print("ts=", ts)
+        params = np.array([self.latent_t, self.infectious_t, self.hospital_p, self.hospital_t, self.death_p])
+        beta_ts = np.linspace(ts.min(), ts.max(), 1+(len(ts)-1)*4)
+        beta_vals = np.array([self.contact_rate(t) for t in beta_ts])
+        result = integrate_model(y0, ts, beta_ts, beta_vals, params)
+        return result
+
+        '''
         t_idx = 0
         t = ts[0]
         t_end = ts[-1]
@@ -211,8 +219,39 @@ class Model:
             y = y + self.derivative(t, y)*step
             t += step
         return np.array(results)
+        '''
+
+def model_derivative(y, t, beta, p):
+    S = y[0]
+    E = y[1]
+    I = y[2]
+    H = y[3]
+    D = y[4]
+    R = y[5]
+    exposed_leave_rate = p[0]
+    infectious_leave_rate = p[1]
+    hospital_leave_rate = p[2]
+    hospital_p = p[3]
+    death_p = p[4]
+    N = S+E+I+H+R
+    correction = S/N
+    SE_flow = I*beta*correction
+    EI_flow = E*exposed_leave_rate
+    IH_flow = I*infectious_leave_rate*hospital_p
+    IR_flow = I*infectious_leave_rate*(1-hospital_p)
+    HD_flow = H*hospital_leave_rate*death_p
+    HR_flow = H*hospital_leave_rate*(1-death_p)
+    dSdt = -SE_flow
+    dEdt = SE_flow - EI_flow
+    dIdt = EI_flow - IH_flow - IR_flow
+    dHdt = IH_flow - HD_flow - HR_flow
+    dDdt = HD_flow
+    dRdt = IR_flow + HR_flow
+    return np.array([dSdt, dEdt, dIdt, dHdt, dDdt, dRdt])
 
 def integrate_model(y0, ts, beta_ts, beta_vals, params):
+    print(beta_ts)
+    print(beta_vals)
     latent_t, infectious_t, hospital_p, hospital_t, death_p = params
     t_idx = 0
     t = ts[0]
@@ -228,11 +267,10 @@ def integrate_model(y0, ts, beta_ts, beta_vals, params):
             if t_idx >= len(ts): break
         if t_idx >= len(ts): break
 
-        while t <= beta_ts[b_idx]: b_idx += 1
+        while beta_ts[b_idx+1] < t: b_idx += 1
         beta_interp = (beta_ts[b_idx] - t)/(beta_ts[b_idx] - beta_ts[b_idx+1])
         beta = beta_interp*beta_vals[b_idx+1] + (1-beta_interp) * beta_vals[b_idx]
-
-        y = y + self.derivative(t, y)*step
+        y = y + model_derivative(y, t, beta, params)*step
         t += step
     return np.array(results)
 
@@ -496,6 +534,9 @@ for k, p in sorted(places.items()):
       # Only keep the parts of the trajectory where less than 1/10 got infected.
     S, E, I, H, D, R = trajectories.T
     target = target[:len(D)]
+
+    print("D=",type(D))
+    print("target=",type(target))
 
     # Then see how much to scale the death data to G
     if k[0] in args.tuned_countries:
