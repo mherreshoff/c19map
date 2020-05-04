@@ -64,6 +64,9 @@ parser.add_argument("--optimize_lockdown", default=True, type=bool)
 parser.add_argument("--lockdown_warmup", default=28, type=int)
     # How many days it takes for a lockdown to reach 100% effect.
 
+parser.add_argument("--nograph", action='store_true')
+    # Turn off graphs.
+
 parser.add_argument("--graph_back", action='store_true')
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
@@ -566,6 +569,7 @@ for k, p in sorted(places.items()):
             output_comprehensive_snapshot_w.writerow(all_fields)
 
     # Graphs:
+    if args.nograph: continue
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
 
