@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+from bunch import Bunch
 import collections
 import contextlib
 import csv
@@ -201,9 +202,8 @@ class Model:
         return soln.y.T
 
 
-
-
-# Growth rates, used to calculate betas.
+# --------------------------------------------------------------------------------
+# Calculation of growths, trends, betas, etc. with which to tune the model.
 
 # Calculate Empirical Growth Rates:
 def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
@@ -236,6 +236,23 @@ def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
             empirical_growths[inv].append(m)
     return {p: np.median(gs) for p, gs in empirical_growths.items()}
 
+def calculate_intervention_behaviors(
+        model, places, min_deaths, min_inv_days, max_pop_frac):
+    growths = calculate_empirical_growths(
+            places, min_deaths, min_inv_days, max_pop_frac)
+    growths['Unknown'] = growths['No Intervention']
+        # We conservatively treat the unknown intervention type as if it were no intervention.
+    behaviors = {}
+    for k, g in growths.items():
+        b = Bunch()
+        b.empirical_growth = g
+        b.empirical_growth_beta = model.growth_rate_to_beta(g)
+        b.ts = np.array([0], dtype=float)
+        b.betas = np.array([b.empirical_growth_beta], dtype=float)
+        behaviors[k] = b
+    return behaviors
+
+
 def calculate_lockdown_death_trend(places):
     deaths_rel_to_lockdown = collections.defaultdict(list)
     for p in places.values():
@@ -259,6 +276,9 @@ def calculate_lockdown_death_trend(places):
         lockdown_death_trend.append(np.mean(v))
     return lockdown_death_trend
 
+# --------------------------------------------------------------------------------
+# Tuning procedure
+
 # Set up a default version of the model:
 model = Model(
         None,
@@ -272,48 +292,39 @@ print(f"Parameters: {model.param_str()}")
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
 
-fixed_growth_by_inv = calculate_empirical_growths(
+
+intervention_behaviors = calculate_intervention_behaviors(
+        model,
         places,
         args.empirical_growth_min_deaths,
         args.empirical_growth_min_inv_days,
         args.empirical_growth_max_pop_frac)
 
-fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
-for k, m in fixed_growth_by_inv.items():
-    print(f"Intervention Status \"{k}\" has growth rate {m}")
-
-
-beta_by_intervention = {}
-for k, v in fixed_growth_by_inv.items():
-    beta = model.growth_rate_to_beta(v)
-    print(f"k={k}: v={v} -> beta={beta}")
-    beta_by_intervention[k] = constant_fn(beta)
-
-lockdown_death_trend = calculate_lockdown_death_trend(places)
-
-with model.beta(beta_by_intervention['No Intervention']):
-    no_inv_gr, y0 = model.equilibrium()
-y0[0] = 1000000000
-ts = np.arange(len(lockdown_death_trend))
-
-
-def lockdown_curve_beta(params):
-    def beta(t):
-        return np.interp(t, [0, args.lockdown_warmup], params)
-    return beta
-
-
-def lockdown_curve_fit_traj(params):
-    with model.beta(lockdown_curve_beta(params)):
-        return model.integrate(y0, ts)
-
-
-def lockdown_curve_fit(params):
-    S, E, I, H, D, R = lockdown_curve_fit_traj(params).T
-    diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
-    return diff
-
 if args.optimize_lockdown:
+    lockdown_death_trend = calculate_lockdown_death_trend(places)
+
+    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
+        y0 = model.equilibrium()[1]
+    y0[0] = 1000000000
+    ts = np.arange(len(lockdown_death_trend))
+
+
+    def lockdown_curve_beta(params):
+        def beta(t):
+            return np.interp(t, [0, args.lockdown_warmup], params)
+        return beta
+
+
+    def lockdown_curve_fit_traj(params):
+        with model.beta(lockdown_curve_beta(params)):
+            return model.integrate(y0, ts)
+
+
+    def lockdown_curve_fit(params):
+        S, E, I, H, D, R = lockdown_curve_fit_traj(params).T
+        diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
+        return diff
+
     lockdown_curve_params = scipy.optimize.minimize(
             lockdown_curve_fit,
             np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float),
@@ -321,11 +332,15 @@ if args.optimize_lockdown:
     for i,b in enumerate(lockdown_curve_params):
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
-    beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
-    beta_by_intervention['Containment'] = constant_fn(lockdown_curve_params[1]/2)
+    intervention_behaviors['Lockdown'].ts = np.array([0, args.lockdown_warmup], dtype=float)
+    intervention_behaviors['Lockdown'].betas = np.array(lockdown_curve_params, dtype=float)
+
+    intervention_behaviors['Containment'].betas = [lockdown_curve_params[1]/2]
         # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
-for k, b in beta_by_intervention.items():
+for k, behavior in sorted(intervention_behaviors.items()):
+    b = lambda t: np.interp(t, behavior.ts, behavior.betas)
+        # TODO: use a class instead of a bunch and make method?
     print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
 
 
@@ -346,27 +361,26 @@ if args.debug_lockdown_fit:
     sys.exit(0)
 
 
-def interventions_to_beta_fn(
-        iv, zero_day, growth_rate_power=None):
+def interventions_to_beta_fn(iv, zero_day):
     beta_starts = []
     prev_s = ''
     for d, s in iv.items():
         if s != prev_s:
             beta_starts.append(
-                    ((d-zero_day).days, beta_by_intervention[s]))
+                    ((d-zero_day).days, intervention_behaviors[s]))
             prev_s = s
     beta_starts.sort(reverse=True)
+    # TODO: turn into one big call to np.interp instead of the below.
     def beta_fn(t):
         for s, f in beta_starts:
             if t >= s:
-                b = f(t - s)
+                b = (f, t - s)
                 break
         else:
             s, f = beta_starts[-1]
-            b = f(0)
-        if growth_rate_power is None: return b
-        return model.growth_rate_to_beta(
-                model.beta_to_growth_rate(b)**growth_rate_power)
+            b = (f, 0)
+        beh, t = b
+        return np.interp(t, beh.ts, beh.betas)
     return beta_fn
 
 
@@ -451,10 +465,10 @@ for k, p in sorted(places.items()):
             break
 
     # Next we simulate starting from one death at start_idx, and a very large population.
+    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
+        growth_rate, equilibrium_state = model.equilibrium()
     fit_length = len(p.deaths)-start_idx
     beta = interventions_to_beta_fn(p.interventions, present_date)
-    with model.beta(beta_by_intervention['No Intervention']):
-        growth_rate, equilibrium_state = model.equilibrium()
     t = np.arange(fit_length) - (fit_length+1)
     target = p.deaths[start_idx:]
     y0 = equilibrium_state.copy()
@@ -470,7 +484,6 @@ for k, p in sorted(places.items()):
     # Then see how much to scale the death data to G
     def loss(s): return np.linalg.norm(D*s-target)
     state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
-    gr_pow = None
 
     present_date = p.deaths.last_date()
     days_to_present = len(p.deaths) - 1 - start_idx
@@ -484,7 +497,8 @@ for k, p in sorted(places.items()):
         trajectories = model.integrate(y0, t)
     # Get the early history before start_idx by downscaling by the no-intervention growth rate.
     pre_history = np.outer(
-            np.power(fixed_growth_by_inv['No Intervention'], np.arange(-start_idx,0)),
+            np.power(intervention_behaviors['No Intervention'].empirical_growth,
+                np.arange(-start_idx,0)),
             trajectories[0])
     # This works for all variables except S, so we have to fix S:
     pre_history[:,0] = N - pre_history[:,1:].sum(axis=1)
