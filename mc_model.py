@@ -10,7 +10,10 @@ model_variables = "SEIHDR"
 var_to_id = {v: i for i, v in enumerate(model_variables)}
 
 def model_derivative(y, t, p):
-    print(type(y), type(t), type(p))
+    print("DERIVATIVE")
+    print(f"y -> {y.tag.test_value.shape}")
+    #print(f"t -> {t.tag.test_value.shape}")
+    print(f"p -> {p.tag.test_value.shape}")
     S = y[0]
     E = y[1]
     I = y[2]
