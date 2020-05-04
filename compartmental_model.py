@@ -87,11 +87,6 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
-# TODO: kill tuning:
-parser.add_argument('--tuned_countries', default=[], nargs='*')
-    # TODO: Tuning appears to be broken.
-    # Old: default=['China', 'Japan', 'Korea, South'], nargs='*')
-
 args = parser.parse_args()
 
 # --------------------------------------------------------------------------------
@@ -215,7 +210,6 @@ def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
     empirical_growths = collections.defaultdict(list)
     for k, p in sorted(places.items()):
         if p.population is None: continue
-        if p.country in args.tuned_countries: continue
 
         # Get the set of dates after a sufficiently long streak of the same intervention:
         stable_dates = set()
@@ -474,20 +468,9 @@ for k, p in sorted(places.items()):
     target = target[:len(D)]
 
     # Then see how much to scale the death data to G
-    if k[0] in args.tuned_countries:
-        def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
-        gr_pow, state_scale = scipy.optimize.minimize(
-                loss, [1,1], bounds=[(0.2, 1), (0.001, 1000)]).x
-        beta = interventions_to_beta_fn(
-                p.interventions, present_date, gr_pow)
-        no_inv_beta = model.growth_rate_to_beta(no_inv_gr**gr_pow)
-        with model.beta(no_inv_beta):
-            growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
-        # Recompute the equilibrium since we've altered the model.
-    else:
-        def loss(s): return np.linalg.norm(D*s-target)
-        state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
-        gr_pow = None
+    def loss(s): return np.linalg.norm(D*s-target)
+    state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
+    gr_pow = None
 
     present_date = p.deaths.last_date()
     days_to_present = len(p.deaths) - 1 - start_idx
