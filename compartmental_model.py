@@ -180,14 +180,19 @@ class Model:
             assert len(solutions) == 1
             return solutions[0]
 
-    def derivative(self, y, t):
+    def derivative(self, t, y):
         S,E,I,H,D,R = y
         N = np.sum(y) - D
         m = self.companion_matrix(t=t, correction=S/N)
         return np.matmul(m, y)
 
     def integrate(self, y0, ts):
-        return scipy.integrate.odeint(lambda *a: self.derivative(*a), y0, ts)
+        soln = scipy.integrate.solve_ivp(
+                fun=lambda *a: self.derivative(*a),
+                t_span=(min(ts), max(ts)),
+                y0=y0,
+                t_eval=ts)
+        return soln.y.T
 
 
 # Set up a default version of the model:
