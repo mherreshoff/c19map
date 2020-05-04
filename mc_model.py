@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 import arviz as az
+import numpy as np
 import pickle
 import pymc3 as pm
 import theano
 import theano.tensor as tt
-
-from common import *
-
-places = pickle.load(open('time_series.pkl', 'rb'))
 
 model_variables = "SEIHDR"
 var_to_id = {v: i for i, v in enumerate(model_variables)}
@@ -42,14 +39,14 @@ def model_derivative(y, t, p):
     dRdt = IR_flow + HR_flow
     return [dSdt, dEdt, dIdt, dHdt, dDdt, dRdt]
 
-
-p = places[('Afghanistan','','')]
-nz_deaths_idx, = np.nonzero(p.deaths)
-first_death = nz_deaths_idx[0]
+death_obs_val = np.array([
+    1,  1,  2,  4,  4,  4,  4,  4,  4,  4,  6,  6,  7,  7, 11, 14, 14, 15, 15, 18, 18, 21, 23, 25, 30, 30, 30, 33, 36, 36, 40,
+    42, 43, 47, 50, 57, 58, 60, 64, 68, 72])
+population = 36643815
 
 ode_model = pm.ode.DifferentialEquation(
         func=model_derivative,
-        times=np.arange(0,len(p.deaths)-first_death),
+        times=np.arange(0,len(death_obs_val)),
         n_states=6,
         n_theta=6)
 
@@ -63,7 +60,7 @@ with pm.Model() as model:
     hospital_p = pm.Uniform('hospital_p', 0, 1)
     death_p = pm.Uniform('death_p', 0, 1)
 
-    ode_soln = ode_model(y0=[p.population, 1, 0,0,0,0], theta = [
+    ode_soln = ode_model(y0=[population, 1, 0,0,0,0], theta = [
         contact_rate,
         exposed_leave_rate,
         infectious_leave_rate,
@@ -73,10 +70,10 @@ with pm.Model() as model:
 
     obs_sigma = pm.HalfCauchy('sigma', 100)
     deaths_soln = ode_soln[:, 4]
-    deaths_obs = pm.Normal('deaths_obs', mu=deaths_soln, sd=obs_sigma, observed=p.deaths[first_death:])
+    deaths_obs = pm.Normal('deaths_obs', mu=deaths_soln, sd=obs_sigma, observed=death_obs_val)
 
-    print(model.profile(model.logpt).summary())
-    print(model.profile(pm.gradient(model.logpt, model.vars)).summary())
+    #model.profile(model.logpt).summary()
+    #model.profile(pm.gradient(model.logpt, model.vars)).summary()
 
     prior = pm.sample_prior_predictive()
     trace = pm.sample(20, cores=4)
