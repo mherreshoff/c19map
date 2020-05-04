@@ -206,23 +206,12 @@ class Model:
         return soln.y.T
 
 
-# Set up a default version of the model:
-model = Model(
-        None,
-        args.latent_period,
-        args.infectious_period,
-        args.p_hospital, args.hospital_duration,
-        args.p_death_given_hospital)
-
-
-# Load the JHU time series data:
-places = pickle.load(open('time_series.pkl', 'rb'))
 
 
 # Growth rates, used to calculate betas.
 
 # Calculate Empirical Growth Rates:
-def calculate_empirical_growths(min_deaths, min_inv_days, max_pop_frac):
+def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
     empirical_growths = collections.defaultdict(list)
     for k, p in sorted(places.items()):
         if p.population is None: continue
@@ -253,10 +242,47 @@ def calculate_empirical_growths(min_deaths, min_inv_days, max_pop_frac):
             empirical_growths[inv].append(m)
     return {p: np.median(gs) for p, gs in empirical_growths.items()}
 
+def calculate_lockdown_death_trend(places):
+    deaths_rel_to_lockdown = collections.defaultdict(list)
+    for p in places.values():
+        if p.interventions is None: continue
+        first_lockdown_date = p.interventions.date_of_first('Lockdown')
+        if first_lockdown_date is None: continue
+        if first_lockdown_date not in p.deaths.dates(): continue
+        lockdown_idx = p.deaths.date_to_position(first_lockdown_date)
+        deaths_at_lockdown = p.deaths[first_lockdown_date]
+        if deaths_at_lockdown < 5: continue
+        for i, d in enumerate(p.deaths):
+            delta = i-lockdown_idx
+            inv = p.interventions.extrapolate(p.deaths.date(i))
+            if delta >= 0 and inv != 'Lockdown': break
+            deaths_rel_to_lockdown[delta].append(d/deaths_at_lockdown)
+
+    lockdown_death_trend = []
+    for k, v in sorted(deaths_rel_to_lockdown.items()):
+        if k < 0: continue
+        if len(v) < 5: break
+        lockdown_death_trend.append(np.mean(v))
+    return lockdown_death_trend
+
+# Set up a default version of the model:
+model = Model(
+        None,
+        args.latent_period,
+        args.infectious_period,
+        args.p_hospital, args.hospital_duration,
+        args.p_death_given_hospital)
+print(f"Parameters: {model.param_str()}")
+
+
+# Load the JHU time series data:
+places = pickle.load(open('time_series.pkl', 'rb'))
+
 fixed_growth_by_inv = calculate_empirical_growths(
-    args.empirical_growth_min_deaths,
-    args.empirical_growth_min_inv_days,
-    args.empirical_growth_max_pop_frac)
+        places,
+        args.empirical_growth_min_deaths,
+        args.empirical_growth_min_inv_days,
+        args.empirical_growth_max_pop_frac)
 
 fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
 for k, m in fixed_growth_by_inv.items():
@@ -269,29 +295,9 @@ for k, v in fixed_growth_by_inv.items():
     print(f"k={k}: v={v} -> beta={beta}")
     beta_by_intervention[k] = constant_fn(beta)
 
-deaths_rel_to_lockdown = collections.defaultdict(list)
-for p in places.values():
-    if p.interventions is None: continue
-    first_lockdown_date = p.interventions.date_of_first('Lockdown')
-    if first_lockdown_date is None: continue
-    if first_lockdown_date not in p.deaths.dates(): continue
-    lockdown_idx = p.deaths.date_to_position(first_lockdown_date)
-    deaths_at_lockdown = p.deaths[first_lockdown_date]
-    if deaths_at_lockdown < 5: continue
-    for i, d in enumerate(p.deaths):
-        delta = i-lockdown_idx
-        inv = p.interventions.extrapolate(p.deaths.date(i))
-        if delta >= 0 and inv != 'Lockdown': break
-        deaths_rel_to_lockdown[delta].append(d/deaths_at_lockdown)
+lockdown_death_trend = calculate_lockdown_death_trend(places)
 
-lockdown_death_trend = []
-for k, v in sorted(deaths_rel_to_lockdown.items()):
-    if k < 0: continue
-    if len(v) < 5: break
-    lockdown_death_trend.append(np.mean(v))
-
-default_beta = model.growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
-with model.beta(default_beta):
+with model.beta(beta_by_intervention['No Intervention']):
     no_inv_gr, y0 = model.equilibrium()
 y0[0] = 1000000000
 ts = np.arange(len(lockdown_death_trend))
@@ -513,7 +519,6 @@ for k, p in sorted(places.items()):
 
     # Output Estimate:
     present_est = np.round(cumulative_infections[len(p.deaths)-1])
-    print(f"{p.region_id()}\t{model.param_str()}\t{present_est}")
 
     # Output all variables:
     row_start = [k[0], k[1], p.latitude, p.longitude]
