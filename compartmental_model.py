@@ -8,6 +8,7 @@ import dateutil.parser
 import functools
 import matplotlib.dates
 import matplotlib.pyplot as plt
+import numba
 import numpy as np
 import os
 import pickle
@@ -178,7 +179,7 @@ class Model:
                 solutions += sympy.solvers.solve(
                         eigenval-target_eigenval, beta)
             assert len(solutions) == 1
-            return solutions[0]
+            return float(solutions[0])
 
     def derivative(self, t, y):
         S,E,I,H,D,R = y
@@ -196,10 +197,10 @@ class Model:
         return soln.y.T
 
     def integrate_naive(self, y0, ts):
-        print("ts=", ts)
+        ts = np.array(ts, dtype=float)
         params = np.array([self.latent_t, self.infectious_t, self.hospital_p, self.hospital_t, self.death_p])
         beta_ts = np.linspace(ts.min(), ts.max(), 1+(len(ts)-1)*4)
-        beta_vals = np.array([self.contact_rate(t) for t in beta_ts])
+        beta_vals = np.array([self.contact_rate(t) for t in beta_ts], dtype=float)
         result = integrate_model(y0, ts, beta_ts, beta_vals, params)
         return result
 
@@ -221,6 +222,7 @@ class Model:
         return np.array(results)
         '''
 
+@numba.jit('float64[:](float64[:], float64, float64, float64[:])')
 def model_derivative(y, t, beta, p):
     S = y[0]
     E = y[1]
@@ -249,20 +251,19 @@ def model_derivative(y, t, beta, p):
     dRdt = IR_flow + HR_flow
     return np.array([dSdt, dEdt, dIdt, dHdt, dDdt, dRdt])
 
+@numba.jit('float64[:,:](float64[:],float64[:],float64[:],float64[:],float64[:])')
 def integrate_model(y0, ts, beta_ts, beta_vals, params):
-    print(beta_ts)
-    print(beta_vals)
     latent_t, infectious_t, hospital_p, hospital_t, death_p = params
     t_idx = 0
     t = ts[0]
     t_end = ts[-1]
-    step = 1/4
+    step = 0.25
     b_idx = 0
     y = y0
-    results = []
+    results = np.zeros((len(ts),6))
     while True:
         while t >= ts[t_idx]:
-            results.append(y)
+            results[t_idx] = y
             t_idx += 1
             if t_idx >= len(ts): break
         if t_idx >= len(ts): break
@@ -272,7 +273,7 @@ def integrate_model(y0, ts, beta_ts, beta_vals, params):
         beta = beta_interp*beta_vals[b_idx+1] + (1-beta_interp) * beta_vals[b_idx]
         y = y + model_derivative(y, t, beta, params)*step
         t += step
-    return np.array(results)
+    return results
 
 # Set up a default version of the model:
 model = Model(
@@ -531,12 +532,14 @@ for k, p in sorted(places.items()):
     with model.beta(beta):
         trajectories = model.integrate(y0, t)
     trajectories = trajectories[trajectories[:,0] > large_pop*0.9]
+    #print("tj ->", type(trajectories))
       # Only keep the parts of the trajectory where less than 1/10 got infected.
     S, E, I, H, D, R = trajectories.T
     target = target[:len(D)]
 
-    print("D=",type(D))
-    print("target=",type(target))
+    #print("D=",D)
+    #print("D1=",type(D[1]))
+    #print("target=",type(target[1]))
 
     # Then see how much to scale the death data to G
     if k[0] in args.tuned_countries:
