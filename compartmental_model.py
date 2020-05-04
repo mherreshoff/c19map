@@ -194,6 +194,23 @@ class Model:
                 t_eval=ts)
         return soln.y.T
 
+    def integrate_naive(self, y0, ts):
+        t_idx = 0
+        t = ts[0]
+        t_end = ts[-1]
+        step = 1/4
+        y = y0
+        results = []
+        while True:
+            while t >= ts[t_idx]:
+                results.append(y)
+                t_idx += 1
+                if t_idx >= len(ts): break
+            if t_idx >= len(ts): break
+            y = y + self.derivative(t, y)*step
+            t += step
+        return np.array(results)
+
 
 # Set up a default version of the model:
 model = Model(
@@ -482,14 +499,20 @@ for k, p in sorted(places.items()):
 
     with model.beta(beta):
         trajectories = model.integrate(y0, t)
-    # Get the early history before start_idx by downscaling by the no-intervention growth rate.
-    pre_history = np.outer(
-            np.power(fixed_growth_by_inv['No Intervention'], np.arange(-start_idx,0)),
-            trajectories[0])
-    # This works for all variables except S, so we have to fix S:
-    pre_history[:,0] = N - pre_history[:,1:].sum(axis=1)
+        trajectories_naive = model.integrate_naive(y0, t)
 
-    trajectories = np.concatenate((pre_history, trajectories))
+    def prepend_history(a, n, p, population):
+        # Get the early history before start_idx by downscaling by the no-intervention growth rate.
+        pre_history = np.outer(np.power(p, np.arange(-n,0)), a[0])
+        # This works for all variables except S, so we have to fix S:
+        pre_history[:,0] = population - pre_history[:,1:].sum(axis=1)
+        return np.concatenate((pre_history, a))
+
+    trajectories = prepend_history(
+            trajectories, start_idx, fixed_growth_by_inv['No Intervention'], N)
+    trajectories_naive = prepend_history(
+            trajectories_naive, start_idx, fixed_growth_by_inv['No Intervention'], N)
+
     S, E, I, H, D, R = trajectories.T
 
     cumulative_infections = E+I+H+D+R  # Everyone who's ever been a case.
@@ -601,8 +624,11 @@ for k, p in sorted(places.items()):
         ax.axvline(inv_d, 0, 1, linestyle='dashed',
                 color=inv_colors[n%len(inv_colors)],
                 label=inv_str)
+    #colors = { 'Susceptible', 'Exposed', 'Infectious', 'Hospitalized', 'Dead', 'Recovered']
     for var, curve in zip(Model.variable_names, trajectories.T):
-        ax.semilogy(graph_dates[s:], curve[s:], label=var)
+        ax.semilogy(graph_dates[s:], curve[s:], label=var, zorder=1)
+    for var, curve_N in zip(Model.variable_names, trajectories_naive.T):
+        ax.semilogy(graph_dates[s:], curve_N[s:], label="%"+var, linestyle='dashed', linewidth=5, zorder=2)
     ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's',
             label='JHU deaths')
     ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
