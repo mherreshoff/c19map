@@ -20,9 +20,18 @@ import sys
 from common import *
 
 
+# --------------------------------------------------------------------------------
+# Flags
 parser = argparse.ArgumentParser(description=\
         """Read the intervention data and run our model on it, outputting predictions.""")
-# Model parameters:
+
+# Region selection:
+parser.add_argument('-c', '--countries', default=[], nargs='*')
+parser.add_argument('-p', '--places', default=[], nargs='*')
+    # The countries/places we run the simulation for.
+    # If neither is specified we run on everything.
+
+# Model parameter flags:
 parser.add_argument("--latent_period", "--lt", default=3.5, type=float)
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
@@ -46,7 +55,7 @@ parser.add_argument("--p_death_given_hospital", "--dp", default=0.14, type=float
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
-# Empirical growth detection parameters:
+# Empirical growth detection flags:
 parser.add_argument("--empirical_growth_min_deaths", default=20, type=int)
     # Minimum number of deaths needed to tune gowth rates.
 
@@ -57,13 +66,18 @@ parser.add_argument("--empirical_growth_min_inv_days", default=20, type=int)
     # How many days does an intervention have to be in effect before we consider
     # growth data to represent it.
 
-#Others:
+# Lockdown fitting flags:
 parser.add_argument("--optimize_lockdown", default=True, type=bool)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
 parser.add_argument("--lockdown_warmup", default=28, type=int)
     # How many days it takes for a lockdown to reach 100% effect.
 
+parser.add_argument("--debug_lockdown_fit", action='store_true')
+    # Shows a graph of how our lockdown betas fit the data.
+
+
+# Graph flags:
 parser.add_argument("--nograph", action='store_true')
     # Turn off graphs.
 
@@ -73,21 +87,14 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
-parser.add_argument("--debug_lockdown_fit", action='store_true')
-    # Shows a graph of how our lockdown betas fit the data.
-
+# TODO: kill tuning:
 parser.add_argument('--tuned_countries', default=[], nargs='*')
     # TODO: Tuning appears to be broken.
     # Old: default=['China', 'Japan', 'Korea, South'], nargs='*')
 
-parser.add_argument('-c', '--countries', default=[], nargs='*')
-parser.add_argument('-p', '--places', default=[], nargs='*')
-    # The countries/places we run the simulation for.
-    # If neither is specified we run on everything.
-
 args = parser.parse_args()
+# --------------------------------------------------------------------------------
 
-# Graph Colors:
 
 class Model:
     variables = "SEIHDR"
