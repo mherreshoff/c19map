@@ -74,7 +74,7 @@ parser.add_argument("--optimize_lockdown", default=True, type=bool)
 parser.add_argument("--lockdown_warmup", default=28, type=int)
     # How many days it takes for a lockdown to reach 100% effect.
 
-parser.add_argument("--debug_lockdown_fit", action='store_true')
+parser.add_argument("--display_curve_fit", action='store_true')
     # Shows a graph of how our lockdown betas fit the data.
 
 
@@ -300,65 +300,68 @@ intervention_behaviors = calculate_intervention_behaviors(
         args.empirical_growth_min_inv_days,
         args.empirical_growth_max_pop_frac)
 
-if args.optimize_lockdown:
-    lockdown_death_trend = calculate_lockdown_death_trend(places)
 
-    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
-        y0 = model.equilibrium()[1]
-    y0[0] = 1000000000
-    ts = np.arange(len(lockdown_death_trend))
+def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
+    ts = np.arange(len(trend))
+    n = len(keyframes)
 
-
-    def lockdown_curve_beta(params):
+    def curve_beta(params):
         def beta(t):
-            return np.interp(t, [0, args.lockdown_warmup], params)
+            return np.interp(t, keyframes, params)
         return beta
 
-
-    def lockdown_curve_fit_traj(params):
-        with model.beta(lockdown_curve_beta(params)):
+    def curve_fit_traj(params):
+        with model.beta(curve_beta(params)):
             return model.integrate(y0, ts)
 
 
-    def lockdown_curve_fit(params):
-        S, E, I, H, D, R = lockdown_curve_fit_traj(params).T
+    def curve_fit(params):
+        S, E, I, H, D, R = curve_fit_traj(params).T
         diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
         return diff
 
-    lockdown_curve_params = scipy.optimize.minimize(
-            lockdown_curve_fit,
-            np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float),
-            bounds=[(0, None)]*2).x
-    for i,b in enumerate(lockdown_curve_params):
+    starting_val = model.growth_rate_to_beta(1.2)
+    curve_params = scipy.optimize.minimize(
+            curve_fit, np.array([starting_val]*n), bounds=[(0, None)]*n).x
+    for i,b in enumerate(curve_params):
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
-    intervention_behaviors['Lockdown'].ts = np.array([0, args.lockdown_warmup], dtype=float)
-    intervention_behaviors['Lockdown'].betas = np.array(lockdown_curve_params, dtype=float)
 
-    intervention_behaviors['Containment'].betas = [lockdown_curve_params[1]/2]
+    if args.display_curve_fit:
+        trajectories = curve_fit_traj(curve_params)
+        fig = plt.figure(facecolor='w')
+        ax = fig.add_subplot(111, axisbelow=True)
+
+        ax.set_title(f"Model Fit to {name} Death Trend")
+        ax.set_xlabel(f'Days ({name} at 0)')
+        ax.set_ylabel('People (log)')
+        for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
+            ax.semilogy(ts, curve, label=var)
+        ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
+        legend = ax.legend()
+        legend.get_frame().set_alpha(0.5)
+        plt.show()
+    return np.array(curve_params, dtype=float)
+
+
+if args.optimize_lockdown:
+    lockdown_death_trend = calculate_lockdown_death_trend(places)
+    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
+        y0 = model.equilibrium()[1]
+    y0[0] = 1000000000
+    keyframes = [0, args.lockdown_warmup]
+    betas = fit_contact_rate_to_death_trend(
+            model, lockdown_death_trend, y0, keyframes, name="Lockdown")
+    intervention_behaviors['Lockdown'].ts = keyframes
+    intervention_behaviors['Lockdown'].betas = betas
+    intervention_behaviors['Containment'].betas = [betas[1]/2]
         # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
 for k, behavior in sorted(intervention_behaviors.items()):
     b = lambda t: np.interp(t, behavior.ts, behavior.betas)
-        # TODO: use a class instead of a bunch and make method?
     print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
 
 
-if args.debug_lockdown_fit:
-    trajectories = lockdown_curve_fit_traj(lockdown_curve_params)
-    fig = plt.figure(facecolor='w')
-    ax = fig.add_subplot(111, axisbelow=True)
-
-    ax.set_title("Model Fit to Lockdown Death Trend")
-    ax.set_xlabel('Days (Lockdown at 0)')
-    ax.set_ylabel('People (log)')
-    for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
-        ax.semilogy(ts, curve, label=var)
-    ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
-    legend = ax.legend()
-    legend.get_frame().set_alpha(0.5)
-    plt.show()
-    sys.exit(0)
 
 
 def interventions_to_beta_fn(iv, zero_day):
