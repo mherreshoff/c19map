@@ -1,9 +1,13 @@
 !data_*.csv
+*.c
 *.csv
-*.sh
 *.pkl
+*.prof
+*.sh
+*.so
 *_estimated_*
 .DS_Store
 JHU_data/*.csv
 __pycache__/*
+build/*
 graphs/*
