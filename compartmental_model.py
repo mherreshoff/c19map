@@ -253,28 +253,28 @@ def calculate_intervention_behaviors(
     return behaviors
 
 
-def calculate_lockdown_death_trend(places):
-    deaths_rel_to_lockdown = collections.defaultdict(list)
+def calculate_death_trend(places, intervention):
+    relative_deaths = collections.defaultdict(list)
     for p in places.values():
         if p.interventions is None: continue
-        first_lockdown_date = p.interventions.date_of_first('Lockdown')
-        if first_lockdown_date is None: continue
-        if first_lockdown_date not in p.deaths.dates(): continue
-        lockdown_idx = p.deaths.date_to_position(first_lockdown_date)
-        deaths_at_lockdown = p.deaths[first_lockdown_date]
-        if deaths_at_lockdown < 5: continue
-        for i, d in enumerate(p.deaths):
-            delta = i-lockdown_idx
+        start_date = p.interventions.date_of_first(intervention)
+        if start_date is None: continue
+        if start_date not in p.deaths.dates(): continue
+        start_idx = p.deaths.date_to_position(start_date)
+        deaths_at_start = p.deaths[start_idx]
+        if deaths_at_start < 5: continue
+        for i, deaths in enumerate(p.deaths):
+            time_delta = i-start_idx
             inv = p.interventions.extrapolate(p.deaths.date(i))
-            if delta >= 0 and inv != 'Lockdown': break
-            deaths_rel_to_lockdown[delta].append(d/deaths_at_lockdown)
+            if time_delta >= 0 and inv != intervention: break
+            relative_deaths[time_delta].append(deaths/deaths_at_start)
 
-    lockdown_death_trend = []
-    for k, v in sorted(deaths_rel_to_lockdown.items()):
-        if k < 0: continue
-        if len(v) < 5: break
-        lockdown_death_trend.append(np.mean(v))
-    return lockdown_death_trend
+    death_trend = []
+    for day, rds in sorted(relative_deaths.items()):
+        if day < 0: continue
+        if len(rds) < 5: break
+        death_trend.append(np.mean(rds))
+    return death_trend
 
 # --------------------------------------------------------------------------------
 # Tuning procedure
@@ -345,7 +345,7 @@ def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
 
 
 if args.optimize_lockdown:
-    lockdown_death_trend = calculate_lockdown_death_trend(places)
+    lockdown_death_trend = calculate_death_trend(places, 'Lockdown')
     with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
         y0 = model.equilibrium()[1]
     y0[0] = 1000000000
