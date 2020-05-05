@@ -387,8 +387,8 @@ for k, behavior in sorted(intervention_behaviors.items()):
 
 
 
-
-# Initialize CSV Outputs:
+# --------------------------------------------------------------------------------
+# Initialize Outputs:
 all_vars_w = csv.writer(open('output_all_vars.csv', 'w'))
 all_vars_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long"] +
@@ -444,7 +444,8 @@ world_confirmed = np.zeros(len(history_dates))
 world_deaths = np.zeros(len(history_dates))
 world_estimated_cases = np.zeros(len(history_dates))
 
-# Run the model forward for each of the places:
+# --------------------------------------------------------------------------------
+# Run the model for each place.
 
 for k, p in sorted(places.items()):
     N = p.population
