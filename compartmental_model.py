@@ -82,6 +82,9 @@ parser.add_argument("--display_curve_fit", action='store_true')
 parser.add_argument("--nograph", action='store_true')
     # Turn off graphs.
 
+parser.add_argument("--graph_days_forecast", default=60, type=int)
+    # How far into the future to draw the graphs.
+
 parser.add_argument("--graph_back", action='store_true')
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
@@ -205,7 +208,6 @@ class Model:
 # --------------------------------------------------------------------------------
 # Calculation of growths, trends, betas, etc. with which to tune the model.
 
-# Calculate Empirical Growth Rates:
 def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
     empirical_growths = collections.defaultdict(list)
     for k, p in sorted(places.items()):
@@ -235,6 +237,7 @@ def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
             m = scipy.stats.gmean(gs)
             empirical_growths[inv].append(m)
     return {p: np.median(gs) for p, gs in empirical_growths.items()}
+
 
 def calculate_intervention_behaviors(
         model, places, min_deaths, min_inv_days, max_pop_frac):
@@ -275,6 +278,7 @@ def calculate_death_trend(places, intervention):
         if len(rds) < 5: break
         death_trend.append(np.mean(rds))
     return death_trend
+
 
 def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
     ts = np.arange(len(trend))
@@ -318,6 +322,7 @@ def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
         plt.show()
     return np.array(curve_params, dtype=float)
 
+
 def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
     margin = 0.01
     beta_starts = []
@@ -343,6 +348,7 @@ def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
     #    print(f"d = {(zero_day+datetime.timedelta(t)).isoformat()} b = {beta}")
     return lambda t: np.interp(t, ts, betas)
 
+
 # --------------------------------------------------------------------------------
 # Tuning procedure
 
@@ -358,7 +364,6 @@ print(f"Parameters: {model.param_str()}")
 
 # Load the JHU time series data:
 places = pickle.load(open('time_series.pkl', 'rb'))
-
 
 intervention_behaviors = calculate_intervention_behaviors(
         model,
@@ -377,7 +382,7 @@ if args.optimize_lockdown:
             model, lockdown_death_trend, y0, keyframes, name="Lockdown")
     intervention_behaviors['Lockdown'].ts = keyframes
     intervention_behaviors['Lockdown'].betas = betas
-    intervention_behaviors['Containment'].betas = [betas[1]/2]
+    intervention_behaviors['Containment'].betas[0] = betas[1]/2.0
         # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
 for k, behavior in sorted(intervention_behaviors.items()):
@@ -429,14 +434,11 @@ headers[1] = "Snapshot Date"
 output_comprehensive_snapshot_w.writerow(headers)
 
 
-# TODO: add flag for whether graphs happen.
-graph_output_dir = 'graphs'
-if os.path.exists(graph_output_dir):
-    shutil.rmtree(graph_output_dir)
-os.makedirs(graph_output_dir)
-
-graph_days_forecast = 60  #TODO: flag.
-  # How many days into the future do we simulate?
+if not args.nograph:
+    graph_output_dir = 'graphs'
+    if os.path.exists(graph_output_dir):
+        shutil.rmtree(graph_output_dir)
+    os.makedirs(graph_output_dir)
 
 # Totals: for the historytable output.
 history_dates = list(list(places.values())[0].deaths.dates())
@@ -493,8 +495,8 @@ for k, p in sorted(places.items()):
 
     present_date = p.deaths.last_date()
     days_to_present = len(p.deaths) - 1 - start_idx
-    days_simulation = days_to_present + graph_days_forecast + 1
-    t = np.arange(-days_to_present, graph_days_forecast+1)
+    days_simulation = days_to_present + args.graph_days_forecast + 1
+    t = np.arange(-days_to_present, args.graph_days_forecast+1)
     
     y0 = state_scale * equilibrium_state
     y0[0] = N - np.sum(y0)
@@ -609,7 +611,7 @@ for k, p in sorted(places.items()):
     plt.grid(True)
     graph_dates = date_range_inclusive(
             p.deaths.start_date(),
-            p.deaths.last_date() + datetime.timedelta(graph_days_forecast))
+            p.deaths.last_date() + datetime.timedelta(args.graph_days_forecast))
     if args.graph_back: s = 0
     else: s = first_death
 
