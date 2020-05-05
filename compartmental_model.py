@@ -449,6 +449,15 @@ world_estimated_cases = np.zeros(len(history_dates))
 # --------------------------------------------------------------------------------
 # Run the model for each place.
 
+# CSV output helpers:
+def per10k(x):
+    if x == '': return ''
+    return round(10000*x/p.population)
+
+def round_delta(x, y):
+    if x == '' or y == '': return ''
+    return round(x-y)
+
 for k, p in sorted(places.items()):
     N = p.population
     if N is None: continue
@@ -522,15 +531,12 @@ for k, p in sorted(places.items()):
     world_deaths += p.deaths
     world_estimated_cases += cumulative_infections[:len(p.deaths)]
 
-    # Output Estimate:
-    present_est = np.round(cumulative_infections[len(p.deaths)-1])
-
     # Output all variables:
     row_start = [k[0], k[1], p.latitude, p.longitude]
-    all_vars_w.writerow(row_start + list(np.round(trajectories.T[:,len(p.deaths)])))
+    all_vars_w.writerow(row_start + [round(x) for x in trajectories.T[:,len(p.deaths)]])
 
     # Output Estimation:
-    latest_estimate = np.round(cumulative_infections[len(p.deaths)-1], -3)
+    latest_estimate = round(cumulative_infections[len(p.deaths)-1], -3)
     if latest_estimate < 1000: estimated = ''
     infected_w.writerow(row_start + [latest_estimate])
 
@@ -551,12 +557,6 @@ for k, p in sorted(places.items()):
                 p.display_name(), country, province,
                 p.latitude, p.longitude,
                 intervention, p.population]
-        def per10k(x):
-            if x == '': return ''
-            return int(np.round(10000*x/p.population))
-        def round_delta(x, y):
-            if x == '' or y == '': return ''
-            return int(np.round(x-y))
 
         jhu_fields = [p.confirmed[idx], p.deaths[idx]]
         jhu_per10k_fields = [per10k(s) for s in jhu_fields]
@@ -651,5 +651,5 @@ for i, d in enumerate(history_dates):
     date_str = d.isoformat()
     confirmed = world_confirmed[i]
     deaths = world_deaths[i]
-    estimated_cases = np.round(world_estimated_cases[i])
+    estimated_cases = round(world_estimated_cases[i])
     history_w.writerow([short_date, date_str, confirmed, deaths, estimated_cases])
