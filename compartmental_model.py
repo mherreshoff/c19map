@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+from bunch import Bunch
 import collections
 import contextlib
 import csv
@@ -20,9 +21,18 @@ import sys
 from common import *
 
 
+# --------------------------------------------------------------------------------
+# Flags
 parser = argparse.ArgumentParser(description=\
         """Read the intervention data and run our model on it, outputting predictions.""")
-# Model parameters:
+
+# Region selection:
+parser.add_argument('-c', '--countries', default=[], nargs='*')
+parser.add_argument('-p', '--places', default=[], nargs='*')
+    # The countries/places we run the simulation for.
+    # If neither is specified we run on everything.
+
+# Model parameter flags:
 parser.add_argument("--latent_period", "--lt", default=3.5, type=float)
     # 1/sigma - The average length of time between contracting the disease
     #     and becoming infectious.
@@ -46,7 +56,7 @@ parser.add_argument("--p_death_given_hospital", "--dp", default=0.14, type=float
     # Probability of death given hospitaliation.
     # 0.14 -> https://eurosurveillance.org/content/10.2807/1560-7917.ES.2020.25.3.2000044
 
-# Empirical growth detection parameters:
+# Empirical growth detection flags:
 parser.add_argument("--empirical_growth_min_deaths", default=20, type=int)
     # Minimum number of deaths needed to tune gowth rates.
 
@@ -57,12 +67,23 @@ parser.add_argument("--empirical_growth_min_inv_days", default=20, type=int)
     # How many days does an intervention have to be in effect before we consider
     # growth data to represent it.
 
-#Others:
+# Lockdown fitting flags:
 parser.add_argument("--optimize_lockdown", default=True, type=bool)
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
 
 parser.add_argument("--lockdown_warmup", default=28, type=int)
     # How many days it takes for a lockdown to reach 100% effect.
+
+parser.add_argument("--display_curve_fit", action='store_true')
+    # Shows a graph of how our lockdown betas fit the data.
+
+
+# Graph flags:
+parser.add_argument("--nograph", action='store_true')
+    # Turn off graphs.
+
+parser.add_argument("--graph_days_forecast", default=60, type=int)
+    # How far into the future to draw the graphs.
 
 parser.add_argument("--graph_back", action='store_true')
     # Attempts to run an optimization to find out how beta changes over a typical lockdown.
@@ -70,21 +91,10 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
-parser.add_argument("--debug_lockdown_fit", action='store_true')
-    # Shows a graph of how our lockdown betas fit the data.
-
-parser.add_argument('--tuned_countries', default=[], nargs='*')
-    # TODO: Tuning appears to be broken.
-    # Old: default=['China', 'Japan', 'Korea, South'], nargs='*')
-
-parser.add_argument('-c', '--countries', default=[], nargs='*')
-parser.add_argument('-p', '--places', default=[], nargs='*')
-    # The countries/places we run the simulation for.
-    # If neither is specified we run on everything.
-
 args = parser.parse_args()
 
-# Graph Colors:
+# --------------------------------------------------------------------------------
+# Model
 
 class Model:
     variables = "SEIHDR"
@@ -93,7 +103,7 @@ class Model:
             'Hospitalized', 'Dead', 'Recovered']
     # The SEIHDR Model.
     # An extension of the SEIR model.
-    # TODO link to the google doc here.
+    # See: https://bit.ly/c19map-v2-docs
     def __init__(self,
             contact_rate, latent_t, infectious_t,
             hospital_p, hospital_t, death_p):
@@ -212,27 +222,13 @@ class Model:
         return np.array(results)
 
 
-# Set up a default version of the model:
-model = Model(
-        None,
-        args.latent_period,
-        args.infectious_period,
-        args.p_hospital, args.hospital_duration,
-        args.p_death_given_hospital)
+# --------------------------------------------------------------------------------
+# Calculation of growths, trends, betas, etc. with which to tune the model.
 
-
-# Load the JHU time series data:
-places = pickle.load(open('time_series.pkl', 'rb'))
-
-
-# Growth rates, used to calculate betas.
-
-# Calculate Empirical Growth Rates:
-def calculate_empirical_growths(min_deaths, min_inv_days, max_pop_frac):
+def calculate_empirical_growths(places, min_deaths, min_inv_days, max_pop_frac):
     empirical_growths = collections.defaultdict(list)
     for k, p in sorted(places.items()):
         if p.population is None: continue
-        if p.country in args.tuned_countries: continue
 
         # Get the set of dates after a sufficiently long streak of the same intervention:
         stable_dates = set()
@@ -259,124 +255,162 @@ def calculate_empirical_growths(min_deaths, min_inv_days, max_pop_frac):
             empirical_growths[inv].append(m)
     return {p: np.median(gs) for p, gs in empirical_growths.items()}
 
-fixed_growth_by_inv = calculate_empirical_growths(
-    args.empirical_growth_min_deaths,
-    args.empirical_growth_min_inv_days,
-    args.empirical_growth_max_pop_frac)
 
-fixed_growth_by_inv['Unknown'] = fixed_growth_by_inv['No Intervention']
-for k, m in fixed_growth_by_inv.items():
-    print(f"Intervention Status \"{k}\" has growth rate {m}")
-
-
-beta_by_intervention = {}
-for k, v in fixed_growth_by_inv.items():
-    beta = model.growth_rate_to_beta(v)
-    print(f"k={k}: v={v} -> beta={beta}")
-    beta_by_intervention[k] = constant_fn(beta)
-
-deaths_rel_to_lockdown = collections.defaultdict(list)
-for p in places.values():
-    if p.interventions is None: continue
-    first_lockdown_date = p.interventions.date_of_first('Lockdown')
-    if first_lockdown_date is None: continue
-    if first_lockdown_date not in p.deaths.dates(): continue
-    lockdown_idx = p.deaths.date_to_position(first_lockdown_date)
-    deaths_at_lockdown = p.deaths[first_lockdown_date]
-    if deaths_at_lockdown < 5: continue
-    for i, d in enumerate(p.deaths):
-        delta = i-lockdown_idx
-        inv = p.interventions.extrapolate(p.deaths.date(i))
-        if delta >= 0 and inv != 'Lockdown': break
-        deaths_rel_to_lockdown[delta].append(d/deaths_at_lockdown)
-
-lockdown_death_trend = []
-for k, v in sorted(deaths_rel_to_lockdown.items()):
-    if k < 0: continue
-    if len(v) < 5: break
-    lockdown_death_trend.append(np.mean(v))
-
-default_beta = model.growth_rate_to_beta(fixed_growth_by_inv['No Intervention'])
-with model.beta(default_beta):
-    no_inv_gr, y0 = model.equilibrium()
-y0[0] = 1000000000
-ts = np.arange(len(lockdown_death_trend))
+def calculate_intervention_behaviors(
+        model, places, min_deaths, min_inv_days, max_pop_frac):
+    growths = calculate_empirical_growths(
+            places, min_deaths, min_inv_days, max_pop_frac)
+    growths['Unknown'] = growths['No Intervention']
+        # We conservatively treat the unknown intervention type as if it were no intervention.
+    behaviors = {}
+    for k, g in growths.items():
+        b = Bunch()
+        b.empirical_growth = g
+        b.empirical_growth_beta = model.growth_rate_to_beta(g)
+        b.ts = np.array([0], dtype=float)
+        b.betas = np.array([b.empirical_growth_beta], dtype=float)
+        behaviors[k] = b
+    return behaviors
 
 
-def lockdown_curve_beta(params):
-    def beta(t):
-        return np.interp(t, [0, args.lockdown_warmup], params)
-    return beta
+def calculate_death_trend(places, intervention):
+    relative_deaths = collections.defaultdict(list)
+    for p in places.values():
+        if p.interventions is None: continue
+        start_date = p.interventions.date_of_first(intervention)
+        if start_date is None: continue
+        if start_date not in p.deaths.dates(): continue
+        start_idx = p.deaths.date_to_position(start_date)
+        deaths_at_start = p.deaths[start_idx]
+        if deaths_at_start < 5: continue
+        for i, deaths in enumerate(p.deaths):
+            time_delta = i-start_idx
+            inv = p.interventions.extrapolate(p.deaths.date(i))
+            if time_delta >= 0 and inv != intervention: break
+            relative_deaths[time_delta].append(deaths/deaths_at_start)
+
+    death_trend = []
+    for day, rds in sorted(relative_deaths.items()):
+        if day < 0: continue
+        if len(rds) < 5: break
+        death_trend.append(np.mean(rds))
+    return death_trend
 
 
-def lockdown_curve_fit_traj(params):
-    with model.beta(lockdown_curve_beta(params)):
-        return model.integrate(y0, ts)
+def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
+    ts = np.arange(len(trend))
+    n = len(keyframes)
+
+    def curve_beta(params):
+        def beta(t):
+            return np.interp(t, keyframes, params)
+        return beta
+
+    def curve_fit_traj(params):
+        with model.beta(curve_beta(params)):
+            return model.integrate(y0, ts)
 
 
-def lockdown_curve_fit(params):
-    S, E, I, H, D, R = lockdown_curve_fit_traj(params).T
-    diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
-    return diff
+    def curve_fit(params):
+        S, E, I, H, D, R = curve_fit_traj(params).T
+        diff = np.linalg.norm(D - np.array(lockdown_death_trend, dtype=float))
+        return diff
 
-if args.optimize_lockdown:
-    lockdown_curve_params = scipy.optimize.minimize(
-            lockdown_curve_fit,
-            np.array([model.growth_rate_to_beta(1.2)]*2, dtype=float),
-            bounds=[(0, None)]*2).x
-    for i,b in enumerate(lockdown_curve_params):
+    starting_val = model.growth_rate_to_beta(1.2)
+    curve_params = scipy.optimize.minimize(
+            curve_fit, np.array([starting_val]*n), bounds=[(0, None)]*n).x
+    for i,b in enumerate(curve_params):
         g = model.beta_to_growth_rate(b)
         print(f"\tLockdown: β_{i} = {b} ... growth={g}")
-    beta_by_intervention['Lockdown'] = lockdown_curve_beta(lockdown_curve_params)
-    beta_by_intervention['Containment'] = constant_fn(lockdown_curve_params[1]/2)
-        # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
-for k, b in beta_by_intervention.items():
-    print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
+    if args.display_curve_fit:
+        trajectories = curve_fit_traj(curve_params)
+        fig = plt.figure(facecolor='w')
+        ax = fig.add_subplot(111, axisbelow=True)
 
-
-if args.debug_lockdown_fit:
-    trajectories = lockdown_curve_fit_traj(lockdown_curve_params)
-    fig = plt.figure(facecolor='w')
-    ax = fig.add_subplot(111, axisbelow=True)
-
-    ax.set_title("Model Fit to Lockdown Death Trend")
-    ax.set_xlabel('Days (Lockdown at 0)')
-    ax.set_ylabel('People (log)')
-    for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
-        ax.semilogy(ts, curve, label=var)
-    ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
-    legend = ax.legend()
-    legend.get_frame().set_alpha(0.5)
-    plt.show()
-    sys.exit(0)
+        ax.set_title(f"Model Fit to {name} Death Trend")
+        ax.set_xlabel(f'Days ({name} at 0)')
+        ax.set_ylabel('People (log)')
+        for var, curve in list(zip(Model.variables, trajectories.T))[1:]:
+            ax.semilogy(ts, curve, label=var)
+        ax.semilogy(ts, lockdown_death_trend, 's', label='D trend.')
+        legend = ax.legend()
+        legend.get_frame().set_alpha(0.5)
+        plt.show()
+    return np.array(curve_params, dtype=float)
 
 
-def interventions_to_beta_fn(
-        iv, zero_day, growth_rate_power=None):
+def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
+    margin = 0.01
     beta_starts = []
     prev_s = ''
-    for d, s in iv.items():
+    for d, s in iv_seq.items():
         if s != prev_s:
-            beta_starts.append(
-                    ((d-zero_day).days, beta_by_intervention[s]))
+            beta_starts.append(((d-zero_day).days, intervention_behaviors[s]))
             prev_s = s
-    beta_starts.sort(reverse=True)
-    def beta_fn(t):
-        for s, f in beta_starts:
-            if t >= s:
-                b = f(t - s)
-                break
+    ts = np.array([], dtype=float)
+    betas = np.array([], dtype=float)
+    for t, beh in beta_starts:
+        if len(ts) == 0:
+            ts = beh.ts+t
+            betas = beh.betas.copy()
         else:
-            s, f = beta_starts[-1]
-            b = f(0)
-        if growth_rate_power is None: return b
-        return model.growth_rate_to_beta(
-                model.beta_to_growth_rate(b)**growth_rate_power)
-    return beta_fn
+            t_end = t-margin
+            beta_end = np.interp(t_end, ts, betas)
+            ts = ts[ts < t_end]
+            betas = betas[:len(ts)]
+            ts = np.concatenate([ts, [t_end], beh.ts+t])
+            betas = np.concatenate([betas, [beta_end], beh.betas])
+    #for t, beta in zip(ts, betas):
+    #    print(f"d = {(zero_day+datetime.timedelta(t)).isoformat()} b = {beta}")
+    return lambda t: np.interp(t, ts, betas)
 
 
-# Initialize CSV Outputs:
+# --------------------------------------------------------------------------------
+# Tuning procedure
+
+# Set up a default version of the model:
+model = Model(
+        None,
+        args.latent_period,
+        args.infectious_period,
+        args.p_hospital, args.hospital_duration,
+        args.p_death_given_hospital)
+print(f"Parameters: {model.param_str()}")
+
+
+# Load the JHU time series data:
+places = pickle.load(open('time_series.pkl', 'rb'))
+
+intervention_behaviors = calculate_intervention_behaviors(
+        model,
+        places,
+        args.empirical_growth_min_deaths,
+        args.empirical_growth_min_inv_days,
+        args.empirical_growth_max_pop_frac)
+
+if args.optimize_lockdown:
+    lockdown_death_trend = calculate_death_trend(places, 'Lockdown')
+    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
+        y0 = model.equilibrium()[1]
+    y0[0] = 1000000000
+    keyframes = np.array([0, args.lockdown_warmup], dtype=float)
+    betas = fit_contact_rate_to_death_trend(
+            model, lockdown_death_trend, y0, keyframes, name="Lockdown")
+    intervention_behaviors['Lockdown'].ts = keyframes
+    intervention_behaviors['Lockdown'].betas = betas
+    intervention_behaviors['Containment'].betas[0] = betas[1]/2.0
+        # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
+
+for k, behavior in sorted(intervention_behaviors.items()):
+    print(f"{k} ->")
+    for t,beta in zip(behavior.ts, behavior.betas):
+        print(f"\tβ({t})={beta}")
+
+
+
+# --------------------------------------------------------------------------------
+# Initialize Outputs:
 all_vars_w = csv.writer(open('output_all_vars.csv', 'w'))
 all_vars_w.writerow(
         ["Province/State", "Country/Region", "Lat", "Long"] +
@@ -417,14 +451,11 @@ headers[1] = "Snapshot Date"
 output_comprehensive_snapshot_w.writerow(headers)
 
 
-# TODO: add flag for whether graphs happen.
-graph_output_dir = 'graphs'
-if os.path.exists(graph_output_dir):
-    shutil.rmtree(graph_output_dir)
-os.makedirs(graph_output_dir)
-
-graph_days_forecast = 60  #TODO: flag.
-  # How many days into the future do we simulate?
+if not args.nograph:
+    graph_output_dir = 'graphs'
+    if os.path.exists(graph_output_dir):
+        shutil.rmtree(graph_output_dir)
+    os.makedirs(graph_output_dir)
 
 # Totals: for the historytable output.
 history_dates = list(list(places.values())[0].deaths.dates())
@@ -432,7 +463,8 @@ world_confirmed = np.zeros(len(history_dates))
 world_deaths = np.zeros(len(history_dates))
 world_estimated_cases = np.zeros(len(history_dates))
 
-# Run the model forward for each of the places:
+# --------------------------------------------------------------------------------
+# Run the model for each place.
 
 for k, p in sorted(places.items()):
     N = p.population
@@ -457,10 +489,11 @@ for k, p in sorted(places.items()):
             break
 
     # Next we simulate starting from one death at start_idx, and a very large population.
-    fit_length = len(p.deaths)-start_idx
-    beta = interventions_to_beta_fn(p.interventions, present_date)
-    with model.beta(beta_by_intervention['No Intervention']):
+    with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
         growth_rate, equilibrium_state = model.equilibrium()
+    fit_length = len(p.deaths)-start_idx
+    beta = interventions_to_beta_fn(
+            intervention_behaviors, p.interventions, present_date)
     t = np.arange(fit_length) - (fit_length+1)
     target = p.deaths[start_idx:]
     y0 = equilibrium_state.copy()
@@ -474,25 +507,13 @@ for k, p in sorted(places.items()):
     target = target[:len(D)]
 
     # Then see how much to scale the death data to G
-    if k[0] in args.tuned_countries:
-        def loss(x): return np.linalg.norm((D**x[0])*x[1]-target)
-        gr_pow, state_scale = scipy.optimize.minimize(
-                loss, [1,1], bounds=[(0.2, 1), (0.001, 1000)]).x
-        beta = interventions_to_beta_fn(
-                p.interventions, present_date, gr_pow)
-        no_inv_beta = model.growth_rate_to_beta(no_inv_gr**gr_pow)
-        with model.beta(no_inv_beta):
-            growth_rate, equilibrium_state = model.equilibrium(t=-(fit_length-1))
-        # Recompute the equilibrium since we've altered the model.
-    else:
-        def loss(s): return np.linalg.norm(D*s-target)
-        state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
-        gr_pow = None
+    def loss(s): return np.linalg.norm(D*s-target)
+    state_scale = scipy.optimize.minimize_scalar(loss, bounds=(0.001, 1000)).x
 
     present_date = p.deaths.last_date()
     days_to_present = len(p.deaths) - 1 - start_idx
-    days_simulation = days_to_present + graph_days_forecast + 1
-    t = np.arange(-days_to_present, graph_days_forecast+1)
+    days_simulation = days_to_present + args.graph_days_forecast + 1
+    t = np.arange(-days_to_present, args.graph_days_forecast+1)
     
     y0 = state_scale * equilibrium_state
     y0[0] = N - np.sum(y0)
@@ -508,11 +529,11 @@ for k, p in sorted(places.items()):
         pre_history[:,0] = population - pre_history[:,1:].sum(axis=1)
         return np.concatenate((pre_history, a))
 
+    no_intervention_growth = intervention_behaviors['No Intervention'].empirical_growth
     trajectories = prepend_history(
-            trajectories, start_idx, fixed_growth_by_inv['No Intervention'], N)
+            trajectories, start_idx, no_intervention_growth, N)
     trajectories_naive = prepend_history(
-            trajectories_naive, start_idx, fixed_growth_by_inv['No Intervention'], N)
-
+            trajectories_naive, start_idx, no_intervention_growth, N)
     S, E, I, H, D, R = trajectories.T
 
     cumulative_infections = E+I+H+D+R  # Everyone who's ever been a case.
@@ -525,7 +546,6 @@ for k, p in sorted(places.items()):
 
     # Output Estimate:
     present_est = np.round(cumulative_infections[len(p.deaths)-1])
-    print(f"{p.region_id()}\t{model.param_str()}\t{present_est}")
 
     # Output all variables:
     row_start = [k[0], k[1], p.latitude, p.longitude]
@@ -589,6 +609,7 @@ for k, p in sorted(places.items()):
             output_comprehensive_snapshot_w.writerow(all_fields)
 
     # Graphs:
+    if args.nograph: continue
     fig = plt.figure(facecolor='w')
     ax = fig.add_subplot(111, axisbelow=True)
 
@@ -612,7 +633,7 @@ for k, p in sorted(places.items()):
     plt.grid(True)
     graph_dates = date_range_inclusive(
             p.deaths.start_date(),
-            p.deaths.last_date() + datetime.timedelta(graph_days_forecast))
+            p.deaths.last_date() + datetime.timedelta(args.graph_days_forecast))
     if args.graph_back: s = 0
     else: s = first_death
 
