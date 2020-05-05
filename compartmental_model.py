@@ -204,8 +204,13 @@ class Model:
         m = self.companion_matrix(t=t, correction=S/N)
         return np.matmul(m, y)
 
-    def integrate(self, y0, ts):
-        return self.integrate_cython(y0, ts)
+    def integrate(self, y0, ts, use_cython=True):
+        if use_cython:
+            return self.integrate_cython(y0, ts)
+        else: f = self.integrate_scipy
+        return f(y0, ts)
+
+    def integrate_scipy(self, y0, ts):
         soln = scipy.integrate.solve_ivp(
                 fun=lambda *a: self.derivative(*a),
                 t_span=(min(ts), max(ts)),
@@ -224,11 +229,6 @@ class Model:
         beta_ts = self.contact_rate.ts
         beta_vals = self.contact_rate.betas
         return md.integrate_model(y0, ts, beta_ts, beta_vals, params)
-
-        ts = np.array(ts, dtype=float)
-        params = np.array([self.latent_t, self.infectious_t, self.hospital_p, self.hospital_t, self.death_p])
-        result = integrate_model(y0, ts, beta_ts, beta_vals, params)
-        return result
 
 # --------------------------------------------------------------------------------
 # Calculation of growths, trends, betas, etc. with which to tune the model.
@@ -369,8 +369,11 @@ def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
             betas = betas[:len(ts)]
             ts = np.concatenate([ts, [t_end], beh.ts+t])
             betas = np.concatenate([betas, [beta_end], beh.betas])
+    #print('----- created beta_fn:')
     #for t, beta in zip(ts, betas):
-    #    print(f"d = {(zero_day+datetime.timedelta(t)).isoformat()} b = {beta}")
+    #    d = (zero_day+datetime.timedelta(t)).isoformat()
+    #    print(f"\tt={t} d={d} beta={beta}")
+    #print('-----')
     fn = lambda t: np.interp(t, ts, betas)
     setattr(fn, 'ts', ts)
     setattr(fn, 'betas', betas)
