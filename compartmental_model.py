@@ -318,6 +318,31 @@ def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
         plt.show()
     return np.array(curve_params, dtype=float)
 
+def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
+    margin = 0.01
+    beta_starts = []
+    prev_s = ''
+    for d, s in iv_seq.items():
+        if s != prev_s:
+            beta_starts.append(((d-zero_day).days, intervention_behaviors[s]))
+            prev_s = s
+    ts = np.array([], dtype=float)
+    betas = np.array([], dtype=float)
+    for t, beh in beta_starts:
+        if len(ts) == 0:
+            ts = beh.ts+t
+            betas = beh.betas.copy()
+        else:
+            t_end = t-margin
+            beta_end = np.interp(t_end, ts, betas)
+            ts = ts[ts < t_end]
+            betas = betas[:len(ts)]
+            ts = np.concatenate([ts, [t_end], beh.ts+t])
+            betas = np.concatenate([betas, [beta_end], beh.betas])
+    #for t, beta in zip(ts, betas):
+    #    print(f"d = {(zero_day+datetime.timedelta(t)).isoformat()} b = {beta}")
+    return lambda t: np.interp(t, ts, betas)
+
 # --------------------------------------------------------------------------------
 # Tuning procedure
 
@@ -347,7 +372,7 @@ if args.optimize_lockdown:
     with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
         y0 = model.equilibrium()[1]
     y0[0] = 1000000000
-    keyframes = [0, args.lockdown_warmup]
+    keyframes = np.array([0, args.lockdown_warmup], dtype=float)
     betas = fit_contact_rate_to_death_trend(
             model, lockdown_death_trend, y0, keyframes, name="Lockdown")
     intervention_behaviors['Lockdown'].ts = keyframes
@@ -361,29 +386,6 @@ for k, behavior in sorted(intervention_behaviors.items()):
         print(f"\tβ({t})={beta}")
 
 
-
-
-def interventions_to_beta_fn(iv, zero_day):
-    beta_starts = []
-    prev_s = ''
-    for d, s in iv.items():
-        if s != prev_s:
-            beta_starts.append(
-                    ((d-zero_day).days, intervention_behaviors[s]))
-            prev_s = s
-    beta_starts.sort(reverse=True)
-    # TODO: turn into one big call to np.interp instead of the below.
-    def beta_fn(t):
-        for s, f in beta_starts:
-            if t >= s:
-                b = (f, t - s)
-                break
-        else:
-            s, f = beta_starts[-1]
-            b = (f, 0)
-        beh, t = b
-        return np.interp(t, beh.ts, beh.betas)
-    return beta_fn
 
 
 # Initialize CSV Outputs:
@@ -470,7 +472,8 @@ for k, p in sorted(places.items()):
     with model.beta(intervention_behaviors['No Intervention'].empirical_growth_beta):
         growth_rate, equilibrium_state = model.equilibrium()
     fit_length = len(p.deaths)-start_idx
-    beta = interventions_to_beta_fn(p.interventions, present_date)
+    beta = interventions_to_beta_fn(
+            intervention_behaviors, p.interventions, present_date)
     t = np.arange(fit_length) - (fit_length+1)
     target = p.deaths[start_idx:]
     y0 = equilibrium_state.copy()
