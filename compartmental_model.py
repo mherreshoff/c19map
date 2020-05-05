@@ -19,6 +19,7 @@ import sympy
 import sys
 
 from common import *
+import model_derivative as md
 
 
 # --------------------------------------------------------------------------------
@@ -121,8 +122,15 @@ class Model:
     @contextlib.contextmanager
     def beta(self, val):
         old_contact_rate = self.contact_rate
-        if callable(val): self.contact_rate = val
-        else: self.contact_rate = constant_fn(val)
+        if callable(val):
+            self.contact_rate = val
+        else:
+            self.contact_rate = constant_fn(val)
+            try:
+                setattr(self.contact_rate, 'betas', np.array([val], dtype=float))
+                setattr(self.contact_rate, 'ts', np.array([0], dtype=float))
+            except Exception:
+                pass
         try: yield None
         finally: self.contact_rate = old_contact_rate
 
@@ -188,7 +196,7 @@ class Model:
                 solutions += sympy.solvers.solve(
                         eigenval-target_eigenval, beta)
             assert len(solutions) == 1
-            return solutions[0]
+            return float(solutions[0])
 
     def derivative(self, t, y):
         S,E,I,H,D,R = y
@@ -196,7 +204,13 @@ class Model:
         m = self.companion_matrix(t=t, correction=S/N)
         return np.matmul(m, y)
 
-    def integrate(self, y0, ts):
+    def integrate(self, y0, ts, use_cython=True):
+        if use_cython:
+            return self.integrate_cython(y0, ts)
+        else: f = self.integrate_scipy
+        return f(y0, ts)
+
+    def integrate_scipy(self, y0, ts):
         soln = scipy.integrate.solve_ivp(
                 fun=lambda *a: self.derivative(*a),
                 t_span=(min(ts), max(ts)),
@@ -204,6 +218,17 @@ class Model:
                 t_eval=ts)
         return soln.y.T
 
+    def integrate_cython(self, y0, ts):
+        params = np.array([
+            1/self.latent_t,
+            1/self.infectious_t,
+            1/self.hospital_t,
+            self.hospital_p,
+            self.death_p], dtype=float)
+        ts = np.array(ts, dtype=float)
+        beta_ts = self.contact_rate.ts
+        beta_vals = self.contact_rate.betas
+        return md.integrate_model(y0, ts, beta_ts, beta_vals, params)
 
 # --------------------------------------------------------------------------------
 # Calculation of growths, trends, betas, etc. with which to tune the model.
@@ -285,14 +310,14 @@ def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
     n = len(keyframes)
 
     def curve_beta(params):
-        def beta(t):
-            return np.interp(t, keyframes, params)
+        beta = lambda t: np.interp(t, keyframes, params)
+        setattr(beta, 'ts', keyframes)
+        setattr(beta, 'betas', params)
         return beta
 
     def curve_fit_traj(params):
         with model.beta(curve_beta(params)):
             return model.integrate(y0, ts)
-
 
     def curve_fit(params):
         S, E, I, H, D, R = curve_fit_traj(params).T
@@ -344,9 +369,15 @@ def interventions_to_beta_fn(intervention_behaviors, iv_seq, zero_day):
             betas = betas[:len(ts)]
             ts = np.concatenate([ts, [t_end], beh.ts+t])
             betas = np.concatenate([betas, [beta_end], beh.betas])
+    #print('----- created beta_fn:')
     #for t, beta in zip(ts, betas):
-    #    print(f"d = {(zero_day+datetime.timedelta(t)).isoformat()} b = {beta}")
-    return lambda t: np.interp(t, ts, betas)
+    #    d = (zero_day+datetime.timedelta(t)).isoformat()
+    #    print(f"\tt={t} d={d} beta={beta}")
+    #print('-----')
+    fn = lambda t: np.interp(t, ts, betas)
+    setattr(fn, 'ts', ts)
+    setattr(fn, 'betas', betas)
+    return fn
 
 
 # --------------------------------------------------------------------------------
@@ -494,9 +525,14 @@ for k, p in sorted(places.items()):
     with model.beta(beta):
         trajectories = model.integrate(y0, t)
     trajectories = trajectories[trajectories[:,0] > large_pop*0.9]
+    #print("tj ->", type(trajectories))
       # Only keep the parts of the trajectory where less than 1/10 got infected.
     S, E, I, H, D, R = trajectories.T
     target = target[:len(D)]
+
+    #print("D=",D)
+    #print("D1=",type(D[1]))
+    #print("target=",type(target[1]))
 
     # Then see how much to scale the death data to G
     def loss(s): return np.linalg.norm(D*s-target)
@@ -512,15 +548,20 @@ for k, p in sorted(places.items()):
 
     with model.beta(beta):
         trajectories = model.integrate(y0, t)
-    # Get the early history before start_idx by downscaling by the no-intervention growth rate.
-    pre_history = np.outer(
-            np.power(intervention_behaviors['No Intervention'].empirical_growth,
-                np.arange(-start_idx,0)),
-            trajectories[0])
-    # This works for all variables except S, so we have to fix S:
-    pre_history[:,0] = N - pre_history[:,1:].sum(axis=1)
+        #trajectories_cython = model.integrate_cython(y0, t)
 
-    trajectories = np.concatenate((pre_history, trajectories))
+    def prepend_history(a, n, p, population):
+        # Get the early history before start_idx by downscaling by the no-intervention growth rate.
+        pre_history = np.outer(np.power(p, np.arange(-n,0)), a[0])
+        # This works for all variables except S, so we have to fix S:
+        pre_history[:,0] = population - pre_history[:,1:].sum(axis=1)
+        return np.concatenate((pre_history, a))
+
+    no_intervention_growth = intervention_behaviors['No Intervention'].empirical_growth
+    trajectories = prepend_history(
+            trajectories, start_idx, no_intervention_growth, N)
+    #trajectories_cython = prepend_history(
+    #        trajectories_cython, start_idx, no_intervention_growth, N)
     S, E, I, H, D, R = trajectories.T
 
     cumulative_infections = E+I+H+D+R  # Everyone who's ever been a case.
@@ -623,8 +664,17 @@ for k, p in sorted(places.items()):
         ax.axvline(inv_d, 0, 1, linestyle='dashed',
                 color=inv_colors[n%len(inv_colors)],
                 label=inv_str)
+    #colors = { 'Susceptible', 'Exposed', 'Infectious', 'Hospitalized', 'Dead', 'Recovered']
     for var, curve in zip(Model.variable_names, trajectories.T):
-        ax.semilogy(graph_dates[s:], curve[s:], label=var)
+        ax.semilogy(graph_dates[s:], curve[s:], label=var, zorder=1)
+    if 0:
+        for var, curve in zip(Model.variable_names, trajectories_cython.T):
+            ax.semilogy(graph_dates[s:], curve[s:], label="%"+var, linestyle='dashed', linewidth=5, zorder=2)
+        for var, curve, curve_C in zip(Model.variable_names, trajectories.T, trajectories_cython.T):
+            a = curve[len(p.deaths)-1]
+            b = curve_C[len(p.deaths)-1]
+            print(f"{var} -> off by {a/b} ({abs(a-b)})")
+
     ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's',
             label='JHU deaths')
     ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
