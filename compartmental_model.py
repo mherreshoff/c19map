@@ -276,31 +276,6 @@ def calculate_death_trend(places, intervention):
         death_trend.append(np.mean(rds))
     return death_trend
 
-# --------------------------------------------------------------------------------
-# Tuning procedure
-
-# Set up a default version of the model:
-model = Model(
-        None,
-        args.latent_period,
-        args.infectious_period,
-        args.p_hospital, args.hospital_duration,
-        args.p_death_given_hospital)
-print(f"Parameters: {model.param_str()}")
-
-
-# Load the JHU time series data:
-places = pickle.load(open('time_series.pkl', 'rb'))
-
-
-intervention_behaviors = calculate_intervention_behaviors(
-        model,
-        places,
-        args.empirical_growth_min_deaths,
-        args.empirical_growth_min_inv_days,
-        args.empirical_growth_max_pop_frac)
-
-
 def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
     ts = np.arange(len(trend))
     n = len(keyframes)
@@ -343,6 +318,29 @@ def fit_contact_rate_to_death_trend(model, trend, y0, keyframes, name=''):
         plt.show()
     return np.array(curve_params, dtype=float)
 
+# --------------------------------------------------------------------------------
+# Tuning procedure
+
+# Set up a default version of the model:
+model = Model(
+        None,
+        args.latent_period,
+        args.infectious_period,
+        args.p_hospital, args.hospital_duration,
+        args.p_death_given_hospital)
+print(f"Parameters: {model.param_str()}")
+
+
+# Load the JHU time series data:
+places = pickle.load(open('time_series.pkl', 'rb'))
+
+
+intervention_behaviors = calculate_intervention_behaviors(
+        model,
+        places,
+        args.empirical_growth_min_deaths,
+        args.empirical_growth_min_inv_days,
+        args.empirical_growth_max_pop_frac)
 
 if args.optimize_lockdown:
     lockdown_death_trend = calculate_death_trend(places, 'Lockdown')
@@ -358,8 +356,9 @@ if args.optimize_lockdown:
         # We assume that Containment is twice as effective in absolute terms as a hard lockdown.
 
 for k, behavior in sorted(intervention_behaviors.items()):
-    b = lambda t: np.interp(t, behavior.ts, behavior.betas)
-    print(f"{k} -> β(0)={b(0)} ... β(10)={b(10)}")
+    print(f"{k} ->")
+    for t,beta in zip(behavior.ts, behavior.betas):
+        print(f"\tβ({t})={beta}")
 
 
 
