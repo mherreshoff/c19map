@@ -93,7 +93,7 @@ def integrate_model(
         if beta_idx >= beta_idx_last:
             beta = beta_vals[beta_idx_last]
         else:
-            beta_interp_frac = (beta_ts[beta_idx+1] - t)/(beta_ts[beta_idx+1] - beta_ts[beta_idx])
+            beta_interp_frac = (t - beta_ts[beta_idx])/(beta_ts[beta_idx+1] - beta_ts[beta_idx])
             beta = beta_interp_frac * beta_vals[beta_idx+1] + (1 - beta_interp_frac) * beta_vals[beta_idx]
 
         N = S+E+I+H+R
