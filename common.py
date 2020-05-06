@@ -196,14 +196,6 @@ class Place:
         a[day] = max(a[day], num)
 
 
-
-# Loading popultion data:
-def load_population_data():
-    def num(s): return int(s.replace(',', ''))
-    return {(r["Country"], r["Region"], ''): num(r["Population"])
-            for r in csv_as_dicts('data_population.csv')}
-
-
 # Canonicalization/reconciliation:
 class PlaceCanonicalizer:
     def __init__(self):
