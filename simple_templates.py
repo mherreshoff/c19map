@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import re
 
-command_pat = re.compile('\s*\%\s*(.*)')
+command_pat = re.compile('\s*\%\s*(.*)\:?')
 def group_template(lines):
     result = []
     stack = [result]
