@@ -15,6 +15,7 @@ def ode_compile(
     if ode_interpolated_parameters is None: ode_interpolated_parameters = []
 
     num_states = len(ode_variables)
+    num_fixed_params = len(ode_interpolated_parameters)
 
     argument_list = [
         "np.ndarray[DTYPE_t, ndim=1] params"]
@@ -43,6 +44,11 @@ def integrate_{ode_name}({arguments}):
     %for i,p in enumerate(ode_fixed_parameters)
     cdef float {p} = params[{i}]
     %end
+    %for p in ode_interpolated_parameters
+    cdef int {p}_idx = -1
+    cdef int {p}_idx_max = len({p}_ts)
+    cdef float {p}_frac
+    %end
     %for i,v in enumerate(ode_variables)
     cdef float {v} = y0[{i}]
     %end
@@ -52,10 +58,9 @@ def integrate_{ode_name}({arguments}):
     cdef int t_idx = 0
     cdef int t_idx_max = len(ts)
     cdef float t = ts[0]
-    # TODO: put interpolation calc vars here.
     cdef np.ndarray[DTYPE_t, ndim=2] results = np.zeros((len(ts),len(y0)), dtype=DTYPE)
-    cdef np.ndarray[DTYPE_t, ndim=3] sensitivities = np.zeros((len(ts),{num_states},len(y0)+len(p)), dtype=DTYPE)
-        # TODO: Populate these.
+    #cdef np.ndarray[DTYPE_t, ndim=3] sensitivity_results = np.zeros(
+    #    (len(ts),{num_states},len(y0)+len(p)), dtype=DTYPE)
 
     while True:
         while t >= ts[t_idx]:
@@ -64,10 +69,23 @@ def integrate_{ode_name}({arguments}):
             %end
             t_idx += 1
             if t_idx >= t_idx_max: break
+        %for p in ode_interpolated_parameters
+        while {p}_idx < {p}_idx_max and {p} > {p}_ts[{p}_idx+1]:
+            {p}_idx += 1
+        if idx_{p} == -1:
+            {p} = {p}_vals[0]
+        elif idx_{p} == {p}_idx_max:
+            {p} = {p}_vals[{p}_idx_max]
+        else:
+            {p}_frac = (t - {p}_ts[{p}_idx])/({p}_ts[{p}_idx+1] - {p}_ts[{p}_idx])
+            {p} = {p}_frac*{p}_vals[{p}_idx+1] + (1-{p}_frac)*{p}_vals[{p}_idx]
+        %end
         if t_idx >= t_idx_max: break
         # TODO set up interpolated variables here.
-        %for v in sorted(ode_variables)
-        ddt_{v} = ode_derivatives[{v}
+        %for v in ode_variables
+        ddt_{v} = {ode_derivatives[v]}
+        %end
+        %for v in ode_variables
         {v} += step*ddt_{v}
         %end
         t += step
@@ -88,24 +106,23 @@ ode_compile(
             "S": "-(S*I/(S+I+R))*beta",
             "I": "(S*I/(S+I+R))*beta - gamma * I",
             "R": "gamma * I"})
-#        output_file="sir.pyx")
 
-# UNDER CONSTRUCTION:
-
-#   ode_compile(
-#       ode_variables=["S", "E", "I", "H", "D", "R"],
-#       ode_fixed_parameters=[
-#           "exposed_leave_rate",
-#           "infectious_leave_rate",
-#           "hospital_leave_rate",
-#           "hospital_p",
-#           "death_p"],
-#       ode_interpolated_parameters=["beta"],
-#       ode_direvatives={
-#           "S": "-I*beta*S/(S+E+I+H+R)",
-#           "E": "I*beta*S/(S+E+I+H+R) - E*exposed_leave_rate",
-#           "I": "E*exposed_leave_rate + hospit",
-#           # TODO
-#           }
-#       cython_output="some_ode.pyx")
+ode_compile(
+        ode_name="augmented",
+        ode_variables=["S", "E", "I", "H", "D", "R"],
+        ode_fixed_parameters=[
+            "exposed_leave_rate",
+            "infectious_leave_rate",
+            "hospital_leave_rate",
+            "hospital_p",
+            "death_p"],
+        ode_interpolated_parameters=["beta"],
+        ode_derivatives={
+            "S": "-I*beta*S/(S+E+I+H+R)",
+            "E": "I*beta*S/(S+E+I+H+R) - E*exposed_leave_rate",
+            "I": "E*exposed_leave_rate - I*infectious_leave_rate",
+            "H": "I*infectious_leave_rate*hospital_p - H*hospital_leave_rate",
+            "D": "H*hospital_leave_rate*death_p",
+            "R": "I*infectious_leave_rate(1-hospital_p) + H*hospital_leave_rate*(1-death_p)"
+            })
 

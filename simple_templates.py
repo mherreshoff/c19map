@@ -32,7 +32,6 @@ def expand(code, global_env, local_env):
     def run(s): return eval(s, global_env, local_env)
     def expand_grouped(g):
         for command, arg in g:
-            print(command, arg)
             if command == 'output':
                 expansion = run("f"+repr(arg))
                     # Hijack the f-string mechanism to expand {...}s.
