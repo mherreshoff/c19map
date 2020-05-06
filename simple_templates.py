@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 import re
+import sys
 
 command_pat = re.compile('\s*\%\s*(.*)\:?')
 def group_template(lines):
     result = []
     stack = [result]
-    for i, line in enumerate(lines):
-
+    for line_number, line in enumerate(lines, start=1):
         m = command_pat.match(line)
         if not m:
-            stack[-1].append(('output', line))
+            stack[-1].append((line_number, 'output', line))
         else:
             command = m.group(1)
             if command == 'end':
@@ -18,7 +18,7 @@ def group_template(lines):
                     raise Exception(f"Parse Error at line {i}: too many %end's.")
             else:
                 inner = []
-                stack[-1].append((m.group(1), inner))
+                stack[-1].append((line_number, m.group(1), inner))
                 stack.append(inner)
     return result
 
@@ -31,10 +31,13 @@ def expand(code, global_env, local_env):
     def assign(var, val): local_env[var] = val
     def run(s): return eval(s, global_env, local_env)
     def expand_grouped(g):
-        for command, arg in g:
+        for line_number, command, arg in g:
             if command == 'output':
-                expansion = run("f"+repr(arg))
-                    # Hijack the f-string mechanism to expand {...}s.
+                try:
+                    expansion = run("f"+repr(arg))   # Punts to f"...{...}..." expansion.
+                except Exception as e:
+                    print(f"Expansion error on line {line_number}: {e}")
+                    sys.exit(1)
                 result.append(expansion)
             else:
                 for_m = for_loop_pat.match(command)
@@ -42,7 +45,14 @@ def expand(code, global_env, local_env):
                 if for_m:
                     variable = for_m.group(1)
                     iterator = for_m.group(2)
-                    values = run(iterator)
+                    try: values = run(iterator)
+                    except Exception as e:
+                        print(f"Line {line_number}: couldn't evaluate iterator \"{iterator}\": {e}")
+                        sys.exit(1)
+                    try: values = list(values)
+                    except Exception as e:
+                        print(f"Line {line_number}: couldn't listify iterator \"{iterator}\": {e}")
+                        sys.exit(1)
                     if ',' in variable:
                         variables = variable.split(',')
                         for val in values:
@@ -56,7 +66,11 @@ def expand(code, global_env, local_env):
                             expand_grouped(arg)
                 elif if_m:
                     conditional = if_m.group(1)
-                    if run(conditional): expand_grouped(arg)
+                    try: conditional_val = run(conditional)
+                    except Exception as e:
+                        print(f"Line {line_number}: couldn't evaluate conditional \"{conditional}\": {e}")
+                        sys.exit(1)
+                    if conditional_val: expand_grouped(arg)
                 else:
                     raise Exception("Unrecognized control structure: " + command)
     expand_grouped(group_template(lines))
