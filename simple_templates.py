@@ -18,7 +18,7 @@ def group_template(lines):
                     raise Exception(f"Parse Error at line {i}: too many %end's.")
             else:
                 inner = []
-                stack[-1].append((line, inner))
+                stack[-1].append((m.group(1), inner))
                 stack.append(inner)
     return result
 
@@ -37,15 +37,15 @@ def expand(code, global_env, local_env):
                 expansion = run("f"+repr(arg))
                     # Hijack the f-string mechanism to expand {...}s.
                 result.append(expansion)
-            elif command[0] == '%':
-                for_m = for_loop.match(command)
-                if_m = for_loop.match(command)
+            else:
+                for_m = for_loop_pat.match(command)
+                if_m = if_statment_pat.match(command)
                 if for_m:
                     variable = for_m.group(1)
                     iterator = for_m.group(2)
                     values = run(iterator)
                     if ',' in variable:
-                        variables = ','.split(variable)
+                        variables = variable.split(',')
                         for val in values:
                             if len(val) != len(variables):
                                 raise Exception("Destructuring bind failed.")
@@ -59,6 +59,6 @@ def expand(code, global_env, local_env):
                     conditional = if_m.group(1)
                     if run(conditional): expand_grouped(arg)
                 else:
-                    print("Unrecognized control structure: " + command)
+                    raise Exception("Unrecognized control structure: " + command)
     expand_grouped(group_template(lines))
     return "\n".join(result) + "\n"

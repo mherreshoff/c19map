@@ -56,8 +56,10 @@ cimport numpy as np
 DTYPE = np.float
 ctypedef np.float_t DTYPE_t
 
-def integrate_{ode_name}({arguments})
-    {y_decls}
+def integrate_{ode_name}({arguments}):
+%for i,v in enumerate(ode_variables)
+    cdef float {v} = params[{i}]
+%end
     {fixed_param_decls}
     {deriv_decls}
     cdef int t_idx = 0
