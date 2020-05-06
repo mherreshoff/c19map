@@ -101,7 +101,8 @@ def integrate_{ode_name}(
     cdef np.ndarray[DTYPE_t, ndim=3] sensitivity = np.zeros(
         (len(ts),{num_vars},param_count), dtype=DTYPE)
 
-    # TODO: initialize dydp here.
+    for v in range({num_vars}):
+        dydp[v,v] = 1
 
     while True:
         while t >= ts[t_idx]:
