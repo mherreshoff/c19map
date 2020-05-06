@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 import numpy as np
 import sympy as sp
 from sympy.parsing.sympy_parser import parse_expr
@@ -24,12 +23,13 @@ def ode_compile(
     ode_derivatives = {k : parse_expr(v, local_dict=symbols)
             for k,v in ode_derivatives.items()}
 
-    for v in ode_variables:
-        for p in ode_fixed_parameters:
-            print(f"[d/d {p}][d/dt] {ode_derivatives[v]} =", sp.diff(ode_derivatives[v], sp.Symbol(p)))
-    ddp_ddt_y = [[sp.diff(ode_derivatives[v], sp.Symbol(p)) for p in ode_fixed_parameters]
+    ddy_dydt = [[sp.diff(ode_derivatives[v], sp.Symbol(v2)) for v2 in ode_variables]
+        for v in ode_variables]
+
+    ddfp_dydt = [[sp.diff(ode_derivatives[v], sp.Symbol(fp)) for fp in ode_fixed_parameters]
             for v in ode_variables]
-    print(np.array(ddp_ddt_y))
+    ddip_dydt = [[sp.diff(ode_derivatives[v], sp.Symbol(ip)) for ip in ode_interpolated_parameters]
+            for v in ode_variables]
 
     def add(a):
         a = list(a)
@@ -100,6 +100,8 @@ def integrate_{ode_name}(
     cdef np.ndarray[DTYPE_t, ndim=2] ddt_dydp = np.zeros(({num_vars}, param_count), dtype=DTYPE)
     cdef np.ndarray[DTYPE_t, ndim=3] sensitivity = np.zeros(
         (len(ts),{num_vars},param_count), dtype=DTYPE)
+    cdef float ddy_dydt_val
+    cdef float ddip_dydt_val
 
     for v in range({num_vars}):
         dydp[v,v] = 1
@@ -129,7 +131,41 @@ def integrate_{ode_name}(
         %for v in ode_variables
         ddt_{v} = {ode_derivatives[v]}
         %end
-        # TODO set up ddt_dydp here.
+        # Calculate ddt_dydp:
+        # Initialize:
+        for v in range({num_vars}):
+            for p in range(param_count):
+                ddt_dydp[v,p] = 0
+        %for v in range(num_vars)
+
+        # ddt_dydp: Calculations for {ode_variables[v]}:
+        #  - Paths through previous time step paramters:
+        %   for v2 in range(num_vars)
+        %       if ddy_dydt[v][v2] != 0
+        ddy_dydt_val = {ddy_dydt[v][v2]}
+        for p in range(param_count): ddt_dydp[{v},p] += ddy_dydt_val*dydp[{v2},p]
+        %       end
+        %   end
+        #  - Paths through fixed parameters:
+        %   for fp in range(num_fparams)
+        %       if ddfp_dydt[v][fp] != 0
+        ddt_dydp[{v},{num_vars+fp}] += {ddfp_dydt[v][fp]}
+        %       end
+        %   end
+        #  - Paths through interpolated paramters:
+        %   for ip,ip_s in enumerate(ode_interpolated_parameters)
+        %       if ddip_dydt[v][ip] != 0
+        ddip_dydp_val = {ddip_dydt[v][ip]}
+        if {ip_s}_idx == -1:
+            ddt_dydp[{v},{ip_s}_offset] += ddip_dydp_val
+        elif {ip_s}_idx == {ip_s}_idx_max:
+            ddt_dydp[{v},{ip_s}_offset+{ip_s}_idx_max] += ddip_dydp_val
+        else:
+            ddt_dydp[{v},{ip_s}_offset+{ip_s}_idx] += ddip_dydp_val*(1-{ip_s}_frac)
+            ddt_dydp[{v},{ip_s}_offset+{ip_s}_idx+1] += ddip_dydp_val*{ip_s}_frac
+        %       end
+        %   end
+        %end
         %for v in ode_variables
         {v} += step*ddt_{v}
         %end
@@ -149,7 +185,8 @@ def integrate_{ode_name}(
 ode_compile(
         ode_name="sir_model",
         ode_variables=["S", "I", "R"],
-        ode_fixed_parameters=["beta", "gamma"],
+        ode_fixed_parameters=["gamma"],
+        ode_interpolated_parameters=["beta"],
         ode_derivatives={
             "S": "-(S*I/(S+I+R))*beta",
             "I": "(S*I/(S+I+R))*beta - gamma * I",
