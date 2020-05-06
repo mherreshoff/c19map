@@ -120,9 +120,9 @@ def integrate_{ode_name}(
         %for p in ode_interpolated_parameters
         while {p}_idx < {p}_idx_max and {p} > {p}_ts[{p}_idx+1]:
             {p}_idx += 1
-        if idx_{p} == -1:
+        if {p}_idx == -1:
             {p} = {p}_vals[0]
-        elif idx_{p} == {p}_idx_max:
+        elif {p}_idx == {p}_idx_max:
             {p} = {p}_vals[{p}_idx_max]
         else:
             {p}_frac = (t - {p}_ts[{p}_idx])/({p}_ts[{p}_idx+1] - {p}_ts[{p}_idx])
@@ -182,19 +182,19 @@ def integrate_{ode_name}(
 
 
 
-ode_compile(
-        ode_name="sir_model",
-        ode_variables=["S", "I", "R"],
-        ode_fixed_parameters=["gamma"],
-        ode_interpolated_parameters=["beta"],
-        ode_derivatives={
-            "S": "-(S*I/(S+I+R))*beta",
-            "I": "(S*I/(S+I+R))*beta - gamma * I",
-            "R": "gamma * I"})
+if 0:
+    ode_compile(
+            ode_name="sir_model",
+            ode_variables=["S", "I", "R"],
+            ode_fixed_parameters=["gamma"],
+            ode_interpolated_parameters=["beta"],
+            ode_derivatives={
+                "S": "-(S*I/(S+I+R))*beta",
+                "I": "(S*I/(S+I+R))*beta - gamma * I",
+                "R": "gamma * I"})
 
-print('-'*80)
 ode_compile(
-        ode_name="augmented",
+        ode_name="augmented_seir",
         ode_variables=["S", "E", "I", "H", "D", "R"],
         ode_fixed_parameters=[
             "exposed_leave_rate",
@@ -210,5 +210,6 @@ ode_compile(
             "H": "I*infectious_leave_rate*hospital_p - H*hospital_leave_rate",
             "D": "H*hospital_leave_rate*death_p",
             "R": "I*infectious_leave_rate*(1-hospital_p) + H*hospital_leave_rate*(1-death_p)"
-            })
+            },
+        output_file="model_derivative.pyx")
 
