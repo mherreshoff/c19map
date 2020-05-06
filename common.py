@@ -207,17 +207,18 @@ def load_population_data():
 # Canonicalization/reconciliation:
 class PlaceCanonicalizer:
     def __init__(self):
+        def g(x): return csv_as_dicts(os.path.join('recon', x))
         self.country_renames = {r["Old Country"]: r["New Country"]
-                for r in csv_as_dicts('data_country_renames.csv')}
+                for r in g('data_country_renames.csv')}
         self.place_renames = {}
-        for r in csv_as_dicts('data_place_renames.csv'):
+        for r in g('data_place_renames.csv'):
             old = (r["Old Country"],r["Old Province"],r["Old District"])
             new = (r["New Country"],r["New Province"],r["New District"])
             self.place_renames[old] = new
         self.code_to_us_state = {r["state"]: r["name"]
-                for r in csv_as_dicts('data_us_states.csv')}
+                for r in g('data_us_states.csv')}
         self.code_to_ca_province = {r["Code"]: r["Province"]
-                for r in csv_as_dicts('data_ca_provinces.csv')}
+                for r in g('data_ca_provinces.csv')}
 
     def sanetize(self, s):
         s = s.strip()
