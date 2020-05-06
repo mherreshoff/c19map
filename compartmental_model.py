@@ -16,6 +16,7 @@ import scipy
 import scipy.stats
 import shutil
 import sympy
+import sympy.utilities.lambdify
 import sys
 
 from common import *
@@ -115,6 +116,8 @@ class Model:
         self.hospital_t = hospital_t
         self.death_p = death_p
 
+        self.eigen_value_to_beta = None
+
     def param_str(self):
         return (f"LT={self.latent_t} IT={self.infectious_t} " +
         f"HP={self.hospital_p} HT={self.hospital_t} DP={self.death_p}")
@@ -171,7 +174,7 @@ class Model:
         state /= state[Model.variables.index('D')] # Normalize by deaths.
         return growth_rate, state
 
-    @functools.lru_cache(maxsize=10000)
+    @functools.lru_cache(maxsize=100000)
     def beta_to_growth_rate(self, beta):
         with self.beta(beta):
             m = self.companion_matrix(dtype=float)
@@ -181,22 +184,22 @@ class Model:
             growth_rate = np.exp(w[max_eig_id])
             return growth_rate
 
-    @functools.lru_cache(maxsize=10000)
+    @functools.lru_cache(maxsize=100000)
     def growth_rate_to_beta(self, growth_rate):
-        target_eigenval = np.log(growth_rate)
-        beta = sympy.Symbol('beta')
-        with self.beta(beta):
-            m = self.companion_matrix(dtype=object)
+        if not self.eigen_value_to_beta:
+            x = sympy.Symbol('x')  # eigenvalue (log growth-rate)
+            beta = sympy.Symbol('beta')
+            with self.beta(beta):
+                m = self.companion_matrix(dtype=object)
             m = m[1:4,1:4] # Get rid of S,D, and R variables.
             m = sympy.Matrix(m)
             eigenvals = list(m.eigenvals().keys())
-                # Symbolic expressions in terms of beta.
             solutions = []
-            for eigenval in eigenvals:
-                solutions += sympy.solvers.solve(
-                        eigenval-target_eigenval, beta)
+            for e in eigenvals:
+                solutions += sympy.solvers.solve(e-x, beta)
             assert len(solutions) == 1
-            return float(solutions[0])
+            self.eigen_value_to_beta = sympy.utilities.lambdify(x, solutions[0])
+        return self.eigen_value_to_beta(np.log(growth_rate))
 
     def derivative(self, t, y):
         S,E,I,H,D,R = y
@@ -610,7 +613,6 @@ for k, p in sorted(places.items()):
 
     for idx, d in enumerate(p.deaths.dates()):
         intervention = p.interventions.extrapolate(d)
-
         initial_fields = [p.region_id(), d.isoformat(),
                 p.display_name(), country, province,
                 p.latitude, p.longitude,
@@ -665,7 +667,6 @@ for k, p in sorted(places.items()):
         ax.axvline(inv_d, 0, 1, linestyle='dashed',
                 color=inv_colors[n%len(inv_colors)],
                 label=inv_str)
-    #colors = { 'Susceptible', 'Exposed', 'Infectious', 'Hospitalized', 'Dead', 'Recovered']
     for var, curve in zip(Model.variable_names, trajectories.T):
         ax.semilogy(graph_dates[s:], curve[s:], label=var, zorder=1)
     if 0:
@@ -689,7 +690,7 @@ for k, p in sorted(places.items()):
     ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
     legend = ax.legend(bbox_to_anchor=(1.04,1), loc='upper left',
             fontsize='xx-small', borderaxespad=0)
-    plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=300)
+    plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=100)
     plt.close('all') # Reset plot for next time.
 
 # Output world history table:
