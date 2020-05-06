@@ -1,58 +1,64 @@
 #!/usr/bin/env python
+import re
 
+command_pat = re.compile('\s*\%\s*(.*)')
 def group_template(lines):
     result = []
     stack = [result]
     for i, line in enumerate(lines):
-        if line == '%end':
-            stack.pop()
-            if len(stack) == 0:
-                raise ValueError, "Parse Error: too many %end's."
-        elif line[0] == '%':
-            inner = []
-            stack[-1].append((line, inner))
-            stack.append(inner)
-        else:
+
+        m = command_pat.match(line)
+        if not m:
             stack[-1].append(('output', line))
-    return result []
+        else:
+            command = m.group(1)
+            if command == 'end':
+                stack.pop()
+                if not stack:
+                    raise Exception(f"Parse Error at line {i}: too many %end's.")
+            else:
+                inner = []
+                stack[-1].append((line, inner))
+                stack.append(inner)
+    return result
 
-for_loop = re.compile('\%for (.*) in (.*)')
-if_statment = re.compile('\%if (.*)')
-
-def expand_line(line, global_env, local_env):
+for_loop_pat = re.compile('for\s+(.*)\s+in\s+(.*)')
+if_statment_pat = re.compile('if\s+(.*)')
 
 def expand(code, global_env, local_env):
     result = []
     lines = code.split("\n")
-    grouped_lines = group_template(lines)
-    def handle(g):
+    def assign(var, val): local_env[var] = val
+    def run(s): return eval(s, global_env, local_env)
+    def expand_grouped(g):
         for command, arg in g:
+            print(command, arg)
             if command == 'output':
-                expansion = eval("f"+repr(line), global_env, local_env)
+                expansion = run("f"+repr(arg))
                     # Hijack the f-string mechanism to expand {...}s.
-                result.append(expand_line(line, global_env, local_env))
+                result.append(expansion)
             elif command[0] == '%':
                 for_m = for_loop.match(command)
                 if_m = for_loop.match(command)
                 if for_m:
                     variable = for_m.group(1)
                     iterator = for_m.group(2)
-                    values = eval(iterator, global_env, local_env):
+                    values = run(iterator)
                     if ',' in variable:
                         variables = ','.split(variable)
                         for val in values:
-                            for var,v in zip(variables, val):
-                                local_env[var]=v
-                            handle(arg)
+                            if len(val) != len(variables):
+                                raise Exception("Destructuring bind failed.")
+                            for var,v in zip(variables, val): assign(var, v)
+                            expand_grouped(arg)
                     else:
                         for val in values:
-                            local_env[variable]=val
-                            handle(arg)
+                            assign(variable, val)
+                            expand_grouped(arg)
                 elif if_m:
                     conditional = if_m.group(1)
-                    if eval(conditional, global_env, local_env):
-                        handle(arg)
+                    if run(conditional): expand_grouped(arg)
                 else:
                     print("Unrecognized control structure: " + command)
+    expand_grouped(group_template(lines))
     return "\n".join(result) + "\n"
-

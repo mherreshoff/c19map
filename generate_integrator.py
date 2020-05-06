@@ -2,6 +2,8 @@
 
 import sympy
 
+import simple_templates
+
 
 def ode_compile(
         ode_name,
@@ -9,9 +11,10 @@ def ode_compile(
         ode_derivatives,
         ode_fixed_parameters,
         ode_interpolated_parameters=None,
-        time_variable="t",
         output_file=None):
     if ode_interpolated_parameters is None: ode_interpolated_parameters = []
+
+    num_states = len(ode_variables)
 
     argument_list = [
         "np.ndarray[DTYPE_t, ndim=1] params"]
@@ -41,7 +44,8 @@ def ode_compile(
     step_ode_variables = ("\n" + " "*8).join(
             f"{v} += d_{v}_dt * step" for v in ode_variables)
 
-    code = f"""# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
+    code = simple_templates.expand(
+"""# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
 # (Disables a warning caused by cython using an old version of numpy.)
 
 # WARNING: This file is auto-generated.  Do not edit.
@@ -52,7 +56,7 @@ cimport numpy as np
 DTYPE = np.float
 ctypedef np.float_t DTYPE_t
 
-cdef np.ndarray integrate_{ode_name}({arguments})
+def integrate_{ode_name}({arguments})
     {y_decls}
     {fixed_param_decls}
     {deriv_decls}
@@ -60,7 +64,9 @@ cdef np.ndarray integrate_{ode_name}({arguments})
     cdef int t_idx_max = len(ts)
     cdef float t = ts[0]
     # TODO: put interpolation calc vars here.
-    cdef np.ndarray[DTYPE_t, ndim=2] results = np.zeros((len(ts),{len(ode_variables)}), dtype=DTYPE)
+    cdef np.ndarray[DTYPE_t, ndim=2] results = np.zeros((len(ts),len(y0)), dtype=DTYPE)
+    cdef np.ndarray[DTYPE_t, ndim=3] sensitivities = np.zeros((len(ts),{num_states},len(y0)+len(p)), dtype=DTYPE)
+        # TODO: Populate these.
 
     while True:
         while t >= ts[t_idx]:
@@ -73,8 +79,11 @@ cdef np.ndarray integrate_{ode_name}({arguments})
         t += step
         {step_ode_variables}
     return result
-    """
-    print(code)
+""", globals(), locals())
+    if output_file is not None:
+        open(output_file, 'w').write(code)
+    else:
+        print(code)
 
 
 
@@ -85,8 +94,8 @@ ode_compile(
         ode_derivatives={
             "S": "-(S*I/(S+I+R))*beta",
             "I": "(S*I/(S+I+R))*beta - gamma * I",
-            "R": "gamma * I"},
-        output_file="sir.pyx")
+            "R": "gamma * I"})
+#        output_file="sir.pyx")
 
 # UNDER CONSTRUCTION:
 
