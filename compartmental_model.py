@@ -480,14 +480,6 @@ world_estimated_cases = np.zeros(len(history_dates))
 # --------------------------------------------------------------------------------
 # Run the model for each place.
 
-# CSV output helpers:
-def per10k(x):
-    if x == '': return ''
-    return round(10000*x/p.population)
-
-def round_delta(x, y):
-    if x == '' or y == '': return ''
-    return round(x-y)
 
 for k, p in sorted(places.items()):
     N = p.population
@@ -591,6 +583,31 @@ for k, p in sorted(places.items()):
     country, province, district = k
     prev_jhu_fields = None
     prev_estimated_fields = None
+
+    # CSV output helpers:
+    def rnd(x, n=0): return np.around(x, n).astype(int)
+
+    def per10k(x):
+        return rnd(10000*x/p.population)
+
+    def round_delta(x):
+        return np.pad(rnd(x[1:]-x[:-1]), [(1, 0)], constant_values=0)
+
+    def friendly_round_vec(x):
+        return np.where(x>=1000, rnd(x, -3),
+                np.where(x>=100, rnd(x, -2),
+                    np.where(x>=10, rnd(x, -1),
+                        np.zeros(x.shape, dtype=int))))
+
+    jhu_fields = [p.confirmed.array(), p.deaths.array()]
+    jhu_delta_fields = [round_delta(a) for a in jhu_fields]
+    jhu_per10k_fields = [per10k(a) for a in jhu_fields]
+
+    estimated_fields = list(trajectories.T) + [active_infections, cumulative_infections]
+    estimated_per10k_fields = [per10k(a) for a in estimated_fields]
+    estimated_delta_fields = [round_delta(a) for a in estimated_fields]
+    estimated_fields = [friendly_round_vec(a) for a in estimated_fields]
+
     for idx, d in enumerate(p.deaths.dates()):
         intervention = p.interventions.extrapolate(d)
 
@@ -598,29 +615,13 @@ for k, p in sorted(places.items()):
                 p.display_name(), country, province,
                 p.latitude, p.longitude,
                 intervention, p.population]
-
-        jhu_fields = [p.confirmed[idx], p.deaths[idx]]
-        jhu_per10k_fields = [per10k(s) for s in jhu_fields]
-        if prev_jhu_fields is None: jhu_delta_fields = ['']*2
-        else: jhu_delta_fields = [round_delta(x,p)
-                for x,p in zip(jhu_fields, prev_jhu_fields)]
-        prev_jhu_fields = jhu_fields
-
-        estimated_fields = list(trajectories[idx])
-        estimated_fields += [active_infections[idx], cumulative_infections[idx]]
-
-        estimated_per10k_fields = [per10k(s) for s in estimated_fields]
-        if prev_estimated_fields is None:
-            estimated_delta_fields = ['']*len(estimated_fields)
-        else: estimated_delta_fields = [round_delta(x, p)
-                for x,p in zip(estimated_fields, prev_estimated_fields)]
-        prev_estimated_fields = estimated_fields
-        estimated_fields = [friendly_round(s) for s in estimated_fields]
-        all_stat_fields = (
-                jhu_fields + estimated_fields +
-                jhu_delta_fields + estimated_delta_fields +
-                jhu_per10k_fields + estimated_per10k_fields)
-        all_stat_fields = [(0 if x == '' else x) for x in all_stat_fields]
+        all_stat_fields = []
+        for field_set in [jhu_fields, estimated_fields,
+                jhu_delta_fields, estimated_delta_fields,
+                jhu_per10k_fields, estimated_per10k_fields]:
+            for field in field_set:
+                if idx < len(field): all_stat_fields.append(field[idx])
+                else: all_stat_fields.append(0)
         misc_fields = [present_date.isoformat(), '', '']
         all_fields = initial_fields + all_stat_fields + misc_fields
         output_comprehensive_series_w.writerow(all_fields)
