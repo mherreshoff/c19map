@@ -83,6 +83,7 @@ def integrate_{ode_name}(
     cdef int {p}_idx = -1
     cdef int {p}_idx_max = len({p}_ts)-1
     cdef float {p}_frac
+    cdef float {p}
     %end
     %for i,v in enumerate(ode_variables)
     cdef float {v} = y0[{i}]
@@ -118,7 +119,7 @@ def integrate_{ode_name}(
             if t_idx >= t_idx_max: break
         if t_idx >= t_idx_max: break
         %for p in ode_interpolated_parameters
-        while {p}_idx < {p}_idx_max and {p} > {p}_ts[{p}_idx+1]:
+        while {p}_idx < {p}_idx_max and t > {p}_ts[{p}_idx+1]:
             {p}_idx += 1
         if {p}_idx == -1:
             {p} = {p}_vals[0]
@@ -139,7 +140,7 @@ def integrate_{ode_name}(
         %for v in range(num_vars)
 
         # ddt_dydp: Calculations for {ode_variables[v]}:
-        #  - Paths through previous time step paramters:
+        #  - Paths through previous time step variables:
         %   for v2 in range(num_vars)
         %       if ddy_dydt[v][v2] != 0
         ddy_dydt_val = {ddy_dydt[v][v2]}
