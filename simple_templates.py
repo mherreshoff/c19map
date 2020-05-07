@@ -1,9 +1,10 @@
-#!/usr/bin/env python
+# simple_templates is a really simple templating system that lets you
+# embed for loops and if statements into an f"..." style string.
 import re
 import sys
 
 command_pat = re.compile('\s*\%\s*(.*)\:?')
-def group_template(lines):
+def group_by_countrol_structure(lines):
     result = []
     stack = [result]
     for line_number, line in enumerate(lines, start=1):
@@ -73,5 +74,5 @@ def expand(code, global_env, local_env):
                     if conditional_val: expand_grouped(arg)
                 else:
                     raise Exception("Unrecognized control structure: " + command)
-    expand_grouped(group_template(lines))
+    expand_grouped(group_by_countrol_structure(lines))
     return "\n".join(result) + "\n"
