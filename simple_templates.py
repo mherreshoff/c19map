@@ -3,7 +3,7 @@
 import re
 import sys
 
-command_pat = re.compile('\s*\%\s*(.*)\:?')
+command_pat = re.compile('\s*\%\s*(.*)')
 def group_by_countrol_structure(lines):
     result = []
     stack = [result]
