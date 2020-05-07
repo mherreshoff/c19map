@@ -55,7 +55,7 @@ def expand(code, global_env, local_env):
                         print(f"Line {line_number}: couldn't listify iterator \"{iterator}\": {e}")
                         sys.exit(1)
                     if ',' in variable:
-                        variables = variable.split(',')
+                        variables = [v.strip() for v in variable.split(',')]
                         for val in values:
                             if len(val) != len(variables):
                                 raise Exception("Destructuring bind failed.")
