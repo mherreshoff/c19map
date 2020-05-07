@@ -1,3 +1,4 @@
+import numpy as np
 import theano
 import theano.tensor as tt
 
@@ -37,12 +38,16 @@ class AugmentedSeir(tt.Op):
     def perform(self, node, inputs, outputs):
         y0, params, beta_vals = inputs
         outputs[0][0] = md.integrate_augmented_seir(
-                y0, params, beta_ts, beta_vals, ts, step)
+                y0, params, self.beta_ts, beta_vals, self.ts, self.step)
 
     def grad(self, inputs, g):
+        print("Grad!")
         y0, params, beta_vals = inputs
+        y0 = y0.value
+        params = params.value
+        beta_vals = beta_vals.value
         output, sensitivity = md.integrate_augmented_seir_with_sensitivity(
-                y0, params, beta_ts, beta_vals, ts, step)
+                y0, params, self.beta_ts, beta_vals, self.ts, self.step)
         in_g = np.tensordot(g, sensitivity, axes=([0,1], [0,1]))
         return np.split(in_g, [self.n_states, self.n_states+self.n_fixed_params])
 
