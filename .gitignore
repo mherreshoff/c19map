@@ -5,6 +5,7 @@
 *.prof
 *.sh
 *.so
+*.pyx
 *_estimated_*
 .DS_Store
 JHU_data/*.csv
