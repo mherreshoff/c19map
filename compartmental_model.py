@@ -231,7 +231,7 @@ class Model:
         ts = np.array(ts, dtype=float)
         beta_ts = self.contact_rate.ts
         beta_vals = self.contact_rate.betas
-        trajectory, sensitivity = md.integrate_augmented_seir(
+        trajectory = md.integrate_augmented_seir(
                 y0, params, beta_ts, beta_vals, ts, 0.10)
         return trajectory
 
