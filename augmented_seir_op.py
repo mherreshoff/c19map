@@ -40,6 +40,7 @@ class AugmentedSeir(tt.Op):
                 y0, params, beta_ts, beta_vals, ts, step)
 
     def grad(self, inputs, g):
+        y0, params, beta_vals = inputs
         output, sensitivity = md.integrate_augmented_seir_with_sensitivity(
                 y0, params, beta_ts, beta_vals, ts, step)
         in_g = np.tensordot(g, sensitivity, axes=([0,1], [0,1]))

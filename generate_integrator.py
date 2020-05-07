@@ -71,7 +71,12 @@ cimport numpy as np
 DTYPE = np.float
 ctypedef np.float_t DTYPE_t
 
-def integrate_{ode_name}(
+{ode_name}_num_states = {num_vars}
+{ode_name}_num_fixed_params = {num_fparams}
+%for include_sensitivity in [False, True]
+
+
+def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
         %for i,a in enumerate(argument_list)
         {a}{"," if i != len(argument_list)-1 else "):"}
         %end
@@ -96,6 +101,7 @@ def integrate_{ode_name}(
     cdef float t = ts[0]
     cdef int param_count = {num_vars+num_fparams}+{num_iparams}
     cdef np.ndarray[DTYPE_t, ndim=2] trajectory = np.zeros((len(ts),{num_vars}), dtype=DTYPE)
+%if include_sensitivity
     cdef np.ndarray[DTYPE_t, ndim=2] dydp = np.zeros(
         ({num_vars}, {num_vars+num_fparams}+{num_iparams}), dtype=DTYPE)
     cdef np.ndarray[DTYPE_t, ndim=2] ddt_dydp = np.zeros(({num_vars}, param_count), dtype=DTYPE)
@@ -106,15 +112,18 @@ def integrate_{ode_name}(
 
     for v in range({num_vars}):
         dydp[v,v] = 1
+%end
 
     while True:
         while t >= ts[t_idx]:
             %for i,v in enumerate(ode_variables)
             trajectory[t_idx, {i}] = {v}
             %end
+            %if include_sensitivity
             for v in range({num_vars}):
                 for p in range(param_count):
                     sensitivity[t_idx,v,p] = dydp[v,p]
+            %end
             t_idx += 1
             if t_idx >= t_idx_max: break
         if t_idx >= t_idx_max: break
@@ -132,6 +141,7 @@ def integrate_{ode_name}(
         %for v in ode_variables
         ddt_{v} = {ode_derivatives[v]}
         %end
+%if include_sensitivity
         # Calculate ddt_dydp:
         # Initialize:
         for v in range({num_vars}):
@@ -167,14 +177,23 @@ def integrate_{ode_name}(
         %       end
         %   end
         %end
+%end
         %for v in ode_variables
         {v} += step*ddt_{v}
         %end
+%if include_sensitivity
         for v in range({num_vars}):
             for p in range(param_count):
                 dydp[v,p] += step * ddt_dydp[v,p]
+%end
         t += step
+%if include_sensitivity
     return (trajectory, sensitivity)
+%end
+%if not include_sensitivity
+    return trajectory
+%end
+%end
 """, globals(), locals())
     if output_file is not None:
         open(output_file, 'w').write(code)
