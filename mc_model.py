@@ -25,7 +25,8 @@ with pm.Model() as model:
     hospital_leave_rate = PositiveNormal('hospital_leave_rate', mu=1/9.75, sigma=0.01)
     hospital_p = ProbNormal('hospital_p', mu=0.0714, sigma=0.01)
     death_p = ProbNormal('death_p', mu=0.14, sigma=0.01)
-    obs_sigma = PositiveNormal('obs_sigma', mu=10, sigma=1)
+    obs_sigma = PositiveNormal('obs_sigma', mu=10, sigma=0.01)
+    scale = PositiveNormal('scale', mu=1, sigma=1)
 
     met = pm.Metropolis([
         contact_rate,
@@ -34,9 +35,10 @@ with pm.Model() as model:
         hospital_leave_rate,
         hospital_p,
         death_p,
-        obs_sigma])
+        obs_sigma,
+        scale])
 
-    y0 = tt.as_tensor_variable(np.array([population, 1, 0,0,0,0],dtype=float))
+    y0 = tt.as_tensor_variable([population, 100*scale, 0*scale,10*scale,scale,0])
     params = tt.as_tensor_variable([
         exposed_leave_rate,
         infectious_leave_rate,
@@ -53,7 +55,7 @@ with pm.Model() as model:
     #model.profile(pm.gradient(model.logpt, model.vars)).summary()
 
     prior = pm.sample_prior_predictive()
-    trace = pm.sample(20000, cores=4, step=met)
+    trace = pm.sample(1000, cores=4, step=met)
     posterior_predictive = pm.sample_posterior_predictive(trace)
 
     data = az.from_pymc3(
