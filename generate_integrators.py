@@ -258,7 +258,6 @@ class {ode_name}_theano_op(tt.Op):
         param_chunks = [self.n_states, self.n_fixed_params, {ip_ts_lens}]
         self.chunk_boundaries = np.cumsum(param_chunks[:-1])
 
-
     def perform(self, node, inputs, outputs):
         y0, params, {vals_ip_vars} = inputs
         outputs[0][0] = {ode_name}_integrate(
