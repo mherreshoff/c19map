@@ -9,7 +9,7 @@ for i in range(1, 9):
     in_idx = (i-1) % 4
     out_idx = (i-1) // 4
 
-    in_var = ([s+"0" for s in integrators.pendulum_variables] + integrators.pendulum_parameters)[in_idx]
+    in_var = ([s+"_0" for s in integrators.pendulum_variables] + integrators.pendulum_parameters)[in_idx]
     out_var = integrators.pendulum_variables[out_idx]
 
     b = 0.25
@@ -29,7 +29,7 @@ for i in range(1, 9):
     empircal_derivative = (trajectory2[:,out_idx] - trajectory[:,out_idx]) / dv
     calculated_derivative = sensitivity[:,out_idx,in_idx]
 
-    plt.title(f'd{out_var}/d{in_var}')
+    plt.title(f'd({out_var})/d({in_var})')
     plt.plot(ts, empircal_derivative, label='empirical')
     plt.plot(ts, calculated_derivative, label='calculated')
     plt.legend(loc='best')
