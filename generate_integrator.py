@@ -14,6 +14,7 @@ def ode_compile(
         ode_interpolated_parameters=None,
         output_file=None):
     if ode_interpolated_parameters is None: ode_interpolated_parameters = []
+    if output_file is None: output_file = f"{ode_name}.pyx"
 
     symbols = {}
     for v in ode_variables: symbols[v] = sp.Symbol(v)
@@ -48,6 +49,9 @@ def ode_compile(
             terms.append(f"len({p}_vals)")
         return add(terms)
 
+    vals_ip_vars = "".join(f"{ip}_vals, " for ip in ode_interpolated_parameters)
+    all_ip_variables = "".join(f"self.{ip}_ts, {ip}_vals, " for ip in ode_interpolated_parameters)
+
     argument_list = [
         "np.ndarray[DTYPE_t, ndim=1] y0",
         "np.ndarray[DTYPE_t, ndim=1] params"]
@@ -59,7 +63,7 @@ def ode_compile(
         "np.ndarray[DTYPE_t, ndim=1] ts",
         "float step"]
     arguments = "\n"+ " "*8 + (",\n" + " "*8).join(argument_list)
-    code = simple_templates.expand(
+    integrator_code = simple_templates.expand(
 """# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
 # (Disables a warning caused by cython using an old version of numpy.)
 
@@ -78,8 +82,9 @@ ctypedef np.float_t DTYPE_t
 
 def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
         %for i,a in enumerate(argument_list)
-        {a}{"," if i != len(argument_list)-1 else "):"}
+        {a},
         %end
+        ):
     %for i,p in enumerate(ode_fixed_parameters)
     cdef float {p} = params[{i}]
     %end
@@ -194,11 +199,74 @@ def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
     return trajectory
 %end
 %end
+
+# {'-'*70}
+# THEANO OP:
+import theano
+import theano.tensor as tt
+
+floatX = theano.config.floatX
+
+class {ode_name}_theano_op(tt.Op):
+    \"\"\"
+    Run the augmented seir ODE in the theano graph.
+
+    Parameters
+    ----------
+    %for ip in ode_interpolated_parameters
+    {ip}_ts: array
+        Array of times at which the {ip} parameter will be specified.
+        ({ip} is linearly interpolated between these times.)
+    %end
+    ts : array
+        Array of times at which to evaluate the solution.
+        Must be ascending. The first one will be taken as the initial time.
+    step : float
+        The step size for Euler's algorithm.
+    \"\"\"
+    itypes = [
+            tt.TensorType(floatX, (False,)),  # y0, float vector
+            tt.TensorType(floatX, (False,)),  # params, float vector
+            %for ip in ode_interpolated_parameters
+            tt.TensorType(floatX, (False,)),  # {ip}_vals, float vector
+            %end
+    ]
+    otypes = [
+            tt.TensorType(floatX, (False, False)),  # trajectory: shape (T, S)
+    ]
+    def __init__(
+            self,
+            %for ip in ode_interpolated_parameters
+            {ip}_ts,
+            %end
+            ts,
+            step):
+        %for ip in ode_interpolated_parameters
+        self.{ip}_ts = np.array({ip}_ts, dtype=float)
+        %end
+        self.ts = np.array(ts, dtype=float)
+        self.step = step
+        self.n_times = len(ts)
+        self.n_states = {ode_name}_num_states
+        self.n_fixed_params = {ode_name}_num_fixed_params
+
+
+    def perform(self, node, inputs, outputs):
+        y0, params, {vals_ip_vars} = inputs
+        outputs[0][0] = integrate_{ode_name}(
+                y0, params, {all_ip_variables} self.ts, self.step)
+
+    def grad(self, inputs, g):
+        y0, params, {vals_ip_vars} = inputs
+        output, sensitivity = integrate_{ode_name}_with_sensitivity(
+                y0, params, {all_ip_variables} self.ts, self.step)
+        inputs_g = np.tensordot(g, sensitivity, axes=([0,1], [0,1]))
+        return np.split(inputs_g, [self.n_states, self.n_states+self.n_fixed_params])
+
+    def infer_shape(self, node, input_shapes):
+        return [(self.n_times, self.n_states)]
 """, globals(), locals())
-    if output_file is not None:
-        open(output_file, 'w').write(code)
-    else:
-        print(code)
+    open(output_file, 'w').write(integrator_code)
 
 
 
@@ -232,4 +300,3 @@ ode_compile(
             "R": "I*infectious_leave_rate*(1-hospital_p) + H*hospital_leave_rate*(1-death_p)"
             },
         output_file="model_derivative.pyx")
-

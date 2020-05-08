@@ -7,14 +7,14 @@ import pymc3 as pm
 import theano
 import theano.tensor as tt
 
-from augmented_seir_op import AugmentedSeir
+import model_derivative as md
 
 death_obs_val = np.array([
     1,  1,  2,  4,  4,  4,  4,  4,  4,  4,  6,  6,  7,  7, 11, 14, 14, 15, 15, 18, 18, 21, 23, 25, 30, 30, 30, 33, 36, 36, 40,
     42, 43, 47, 50, 57, 58, 60, 64, 68, 72])
 population = 36643815
 
-ode_model = AugmentedSeir([0], np.arange(len(death_obs_val)).astype(float), 0.1)
+ode_model = md.augmented_seir_theano_op([0], np.arange(len(death_obs_val)).astype(float), 0.1)
 
 with pm.Model() as model:
     PositiveNormal = pm.Bound(pm.Normal, lower=0.0)
