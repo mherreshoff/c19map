@@ -20,7 +20,7 @@ import sympy.utilities.lambdify
 import sys
 
 from common import *
-import model_derivative as md
+import integrators
 
 
 # --------------------------------------------------------------------------------
@@ -231,7 +231,7 @@ class Model:
         ts = np.array(ts, dtype=float)
         beta_ts = self.contact_rate.ts
         beta_vals = self.contact_rate.betas
-        trajectory = md.integrate_augmented_seir(
+        trajectory = integrators.augmented_seir_integrate(
                 y0, params, beta_ts, beta_vals, ts, 0.10)
         return trajectory
 

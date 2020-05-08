@@ -5,15 +5,34 @@ from sympy.parsing.sympy_parser import parse_expr
 
 import simple_templates
 
-def ode_compile(
+cython_output = open('integrators.pyx', 'w')
+
+cython_header = """# WARNING: This file is auto-generated.  Do not edit.
+# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
+# (Disables a warning caused by cython using an old version of numpy.)
+from libc.math cimport sin, cos
+cimport numpy as np
+
+import numpy as np
+import theano
+import theano.tensor as tt
+
+DTYPE = np.float
+ctypedef np.float_t DTYPE_t
+floatX = theano.config.floatX
+
+"""
+cython_output.write(cython_header)
+
+
+def ode_to_cython(
         ode_name,
         ode_variables,
         ode_derivatives,
-        ode_fixed_parameters,
-        ode_interpolated_parameters=None,
-        output_file=None):
+        ode_fixed_parameters=None,
+        ode_interpolated_parameters=None):
+    if ode_fixed_parameters is None: ode_fixed_parameters = []
     if ode_interpolated_parameters is None: ode_interpolated_parameters = []
-    if output_file is None: output_file = f"{ode_name}.pyx"
 
     symbols = {}
     for v in ode_variables: symbols[v] = sp.Symbol(v)
@@ -50,6 +69,7 @@ def ode_compile(
 
     vals_ip_vars = "".join(f"{ip}_vals, " for ip in ode_interpolated_parameters)
     all_ip_variables = "".join(f"self.{ip}_ts, {ip}_vals, " for ip in ode_interpolated_parameters)
+    ip_ts_lens = ",".join(f"len({ip}_ts)" for ip in ode_interpolated_parameters)
 
     argument_list = [
         "np.ndarray[DTYPE_t, ndim=1] y0",
@@ -62,28 +82,23 @@ def ode_compile(
         "np.ndarray[DTYPE_t, ndim=1] ts",
         "float step"]
     arguments = "\n"+ " "*8 + (",\n" + " "*8).join(argument_list)
-    integrator_code = simple_templates.expand(
-"""# WARNING: This file is auto-generated.  Do not edit.
-# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
-# (Disables a warning caused by cython using an old version of numpy.)
-
-
-import numpy as np
-cimport numpy as np
-
-DTYPE = np.float
-ctypedef np.float_t DTYPE_t
+    integrator_code = simple_templates.expand("""
+# {'='*75}
+# Integrators for {ode_name}
 
 {ode_name}_num_states = {num_vars}
 {ode_name}_num_fixed_params = {num_fparams}
 %for include_sensitivity in [False, True]
 
 
-def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
-        %for i,a in enumerate(argument_list)
+def {ode_name}_integrate{"_with_sensitivity" if include_sensitivity else ""}(
+        %for a in argument_list
         {a},
         %end
         ):
+    %for i,v in enumerate(ode_variables)
+    cdef float {v} = y0[{i}]
+    %end
     %for i,p in enumerate(ode_fixed_parameters)
     cdef float {p} = params[{i}]
     %end
@@ -95,13 +110,10 @@ def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
     cdef float {p}
     %end
     %for i,v in enumerate(ode_variables)
-    cdef float {v} = y0[{i}]
-    %end
-    %for i,v in enumerate(ode_variables)
     cdef float ddt_{v}
     %end
     cdef int t_idx = 0
-    cdef int t_idx_max = len(ts)
+    cdef int t_idx_max = len(ts)-1
     cdef float t = ts[0]
     cdef int param_count = {num_vars+num_fparams}+{num_iparams}
     cdef np.ndarray[DTYPE_t, ndim=2] trajectory = np.zeros((len(ts),{num_vars}), dtype=DTYPE)
@@ -129,8 +141,8 @@ def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
                     sensitivity[t_idx,v,p] = dydp[v,p]
             %end
             t_idx += 1
-            if t_idx >= t_idx_max: break
-        if t_idx >= t_idx_max: break
+            if t_idx > t_idx_max: break
+        if t_idx > t_idx_max: break
         %for p in ode_interpolated_parameters
         while {p}_idx < {p}_idx_max and t > {p}_ts[{p}_idx+1]:
             {p}_idx += 1
@@ -199,12 +211,7 @@ def integrate_{ode_name}{"_with_sensitivity" if include_sensitivity else ""}(
 %end
 %end
 
-# {'-'*70}
-# THEANO OP:
-import theano
-import theano.tensor as tt
-
-floatX = theano.config.floatX
+# {'-'*60}
 
 class {ode_name}_theano_op(tt.Op):
     \"\"\"
@@ -248,39 +255,48 @@ class {ode_name}_theano_op(tt.Op):
         self.n_times = len(ts)
         self.n_states = {ode_name}_num_states
         self.n_fixed_params = {ode_name}_num_fixed_params
+        param_chunks = [self.n_states, self.n_fixed_params, {ip_ts_lens}]
+        self.chunk_boundaries = np.cumsum(param_chunks[:-1])
 
 
     def perform(self, node, inputs, outputs):
         y0, params, {vals_ip_vars} = inputs
-        outputs[0][0] = integrate_{ode_name}(
+        outputs[0][0] = {ode_name}_integrate(
                 y0, params, {all_ip_variables} self.ts, self.step)
 
     def grad(self, inputs, g):
         y0, params, {vals_ip_vars} = inputs
-        output, sensitivity = integrate_{ode_name}_with_sensitivity(
+        output, sensitivity = {ode_name}_integrate_with_sensitivity(
                 y0, params, {all_ip_variables} self.ts, self.step)
         inputs_g = np.tensordot(g, sensitivity, axes=([0,1], [0,1]))
-        return np.split(inputs_g, [self.n_states, self.n_states+self.n_fixed_params])
+        return np.split(inputs_g, self.chunk_boundaries)
 
     def infer_shape(self, node, input_shapes):
         return [(self.n_times, self.n_states)]
 """, globals(), locals())
-    open(output_file, 'w').write(integrator_code)
+    cython_output.write(integrator_code)
 
 
 
-if 0:
-    ode_compile(
-            ode_name="sir_model",
-            ode_variables=["S", "I", "R"],
-            ode_fixed_parameters=["gamma"],
-            ode_interpolated_parameters=["beta"],
-            ode_derivatives={
-                "S": "-(S*I/(S+I+R))*beta",
-                "I": "(S*I/(S+I+R))*beta - gamma * I",
-                "R": "gamma * I"})
+ode_to_cython(
+        ode_name="pendulum",
+        ode_variables=["theta", "omega"],
+        ode_fixed_parameters = ["b", "c"],
+        ode_derivatives={
+            "theta": "omega",
+            "omega": "-b*omega + c*sin(theta)"})
 
-ode_compile(
+ode_to_cython(
+        ode_name="sir",
+        ode_variables=["S", "I", "R"],
+        ode_fixed_parameters=["gamma"],
+        ode_interpolated_parameters=["beta"],
+        ode_derivatives={
+            "S": "-(S*I/(S+I+R))*beta",
+            "I": "(S*I/(S+I+R))*beta - gamma * I",
+            "R": "gamma * I"})
+
+ode_to_cython(
         ode_name="augmented_seir",
         ode_variables=["S", "E", "I", "H", "D", "R"],
         ode_fixed_parameters=[
@@ -297,5 +313,6 @@ ode_compile(
             "H": "I*infectious_leave_rate*hospital_p - H*hospital_leave_rate",
             "D": "H*hospital_leave_rate*death_p",
             "R": "I*infectious_leave_rate*(1-hospital_p) + H*hospital_leave_rate*(1-death_p)"
-            },
-        output_file="model_derivative.pyx")
+            })
+
+cython_output.close()

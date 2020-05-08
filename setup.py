@@ -8,12 +8,9 @@ cflags = os.environ.get("CFLAGS", "")
 os.environ["CFLAGS"] = cflags + " -I" + numpy.get_include()
 
 setup(
-    name='model_derivative',
+    name='integrators',
     include_dirs=[numpy.get_include()],
     ext_modules=cythonize(
-        "model_derivative.pyx",
+        "integrators.pyx",
         include_path=[numpy.get_include()],
-        compiler_directives={
-            'language_level': 3
-        })
-)
+        compiler_directives={ 'language_level': 3 }))
