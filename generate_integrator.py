@@ -5,7 +5,6 @@ from sympy.parsing.sympy_parser import parse_expr
 
 import simple_templates
 
-
 def ode_compile(
         ode_name,
         ode_variables,
@@ -64,10 +63,10 @@ def ode_compile(
         "float step"]
     arguments = "\n"+ " "*8 + (",\n" + " "*8).join(argument_list)
     integrator_code = simple_templates.expand(
-"""# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
+"""# WARNING: This file is auto-generated.  Do not edit.
+# distutils: define_macros=NPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION
 # (Disables a warning caused by cython using an old version of numpy.)
 
-# WARNING: This file is auto-generated.  Do not edit.
 
 import numpy as np
 cimport numpy as np
