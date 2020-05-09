@@ -216,9 +216,65 @@ def {name}_integrate{"_with_sensitivity" if include_sensitivity else ""}(
 
 # {'-'*60}
 
+class {name}_sensitivity_theano_op(tt.Op):
+    \"\"\"
+    Compute the sensitivity matrix for the {name} ODE.
+    Parameters
+    ----------
+    %for i in influences
+    {i}_ts: array
+        Array of times at which the {i} parameter will be specified.
+        Must be ascending. ({i} is linearly interpolated between these times.)
+    %end
+    ts : array
+        Array of times at which to evaluate the solution.
+        Must be ascending. The first one will be taken as the initial time.
+    step : float
+        The step size for Euler's algorithm.
+    \"\"\"
+    itypes = [
+            tt.TensorType(floatX, (False,)),  # y0, float vector
+            tt.TensorType(floatX, (False,)),  # params, float vector
+            %for i in influences
+            tt.TensorType(floatX, (False,)),  # {i}_vals, float vector
+            %end
+    ]
+    otypes = [
+            tt.TensorType(floatX, (False, False, False)),  # trajectory: shape (T, S, P)
+    ]
+
+    def __init__(
+            self,
+            %for i in influences
+            {i}_ts,
+            %end
+            ts,
+            step):
+        %for i in influences
+        self.{i}_ts = np.array({i}_ts, dtype=float)
+        %end
+        self.ts = np.array(ts, dtype=float)
+        self.step = step
+        self.n_times = len(ts)
+        self.n_variables = {name}_num_variables
+        self.n_params = {name}_num_parameters
+
+    def perform(self, node, inputs, outputs):
+        y0, params, {influences_vals_vars} = inputs
+        trajectory, sensitivity = {name}_integrate_with_sensitivity(
+                y0, params, {all_influences_vars} self.ts, self.step)
+        outputs[0][0] = sensitivity
+
+    def grad(self, inputs, g):
+        raise RuntimeError("2nd derivitives not suppored for compiled ODEs.")
+
+    def infer_shape(self, node, input_shapes):
+        return [(self.n_times, self.n_variables, self.n_params)]
+
+
 class {name}_theano_op(tt.Op):
     \"\"\"
-    Run the {name} ODE in the theano graph.
+    Run the {name} ODE.
 
     Parameters
     ----------
@@ -243,6 +299,7 @@ class {name}_theano_op(tt.Op):
     otypes = [
             tt.TensorType(floatX, (False, False)),  # trajectory: shape (T, S)
     ]
+
     def __init__(
             self,
             %for i in influences
@@ -258,20 +315,30 @@ class {name}_theano_op(tt.Op):
         self.n_times = len(ts)
         self.n_variables = {name}_num_variables
         self.n_params = {name}_num_parameters
-        param_chunks = [self.n_variables, self.n_params, {influences_len_list}]
-        self.chunk_boundaries = np.cumsum(param_chunks[:-1])
+        param_chunks = [0, self.n_variables, self.n_params, {influences_len_list}]
+        self.chunk_boundaries = np.cumsum(param_chunks)
+        self.derivative_op = {name}_sensitivity_theano_op(
+            %for i in influences
+            self.{i}_ts,
+            %end
+            self.ts,
+            self.step)
 
     def perform(self, node, inputs, outputs):
         y0, params, {influences_vals_vars} = inputs
-        outputs[0][0] = {name}_integrate(
+        trajectory = {name}_integrate(
                 y0, params, {all_influences_vars} self.ts, self.step)
+        outputs[0][0] = trajectory
 
     def grad(self, inputs, g):
         y0, params, {influences_vals_vars} = inputs
-        output, sensitivity = {name}_integrate_with_sensitivity(
-                y0, params, {all_influences_vars} self.ts, self.step)
-        inputs_g = np.tensordot(g, sensitivity, axes=([0,1], [0,1]))
-        return np.split(inputs_g, self.chunk_boundaries)
+        output_g = g[0]
+        sensitivity = self.derivative_op(y0, params, {influences_vals_vars})
+        inputs_g = tt.tensordot(output_g, sensitivity, axes=[[0,1], [0,1]])
+        arg_g = []
+        for start, end in zip(self.chunk_boundaries, self.chunk_boundaries[1:]):
+            arg_g.append(inputs_g[start:end])
+        return arg_g
 
     def infer_shape(self, node, input_shapes):
         return [(self.n_times, self.n_variables)]
@@ -279,6 +346,11 @@ class {name}_theano_op(tt.Op):
     cython_output.write(integrator_code)
 
 
+ode_to_cython(
+        name="compound",
+        variables=["x"],
+        parameters=["g"],
+        derivatives={"x": "g*x"})
 
 ode_to_cython(
         name="pendulum",
