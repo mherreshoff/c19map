@@ -4,17 +4,26 @@ import matplotlib.pyplot as plt
 
 import integrators
 
+symbols = ["Delta", "Gamma", "Lambda", "Omega", "Phi", "Pi", "Psi", "Sigma", "Theta", "Upsilon", "Xi", "aleph", "alpha", "beta", "beth", "chi", "daleth", "delta", "digamma", "epsilon", "eta", "gamma", "gimmel", "iota", "kappa", "lambda", "mu", "nu", "omega", "phi", "pi", "psi", "rho", "sigma", "tau", "theta", "upsilon", "varepsilon", "varkappa", "varphi", "varpi", "varrho", "varsigma", "vartheta", "xi", "zeta"]
+
+def name_to_tex(s):
+    if len(s) == 1: return s
+    if s in symbols: return '\\'+s
+    return '\\mathrm{'+s+'}'
+
 # Influences not yet supported.
 def plot_sensitivities(name, y0, params, ts, step):
     def get(s): return integrators.__dict__[f'{name}_{s}']
     integ = get('integrate')
     integ_with_sens = get('integrate_with_sensitivity')
     variables = get('variables')
-    input_names = [v+"_0" for v in variables] + get('parameters')
-    output_names = get('variables')
+    input_names = [name_to_tex(v)+"_0" for v in variables] + get('parameters')
+    output_names = [name_to_tex(v) for v in get('variables')]
 
     num_inputs = len(input_names)
     num_outputs = len(output_names)
+
+    plt.rc('text', usetex=True)
 
     for i in range(num_inputs*num_outputs):
         plt.subplot(num_outputs, num_inputs, i+1)
@@ -37,10 +46,10 @@ def plot_sensitivities(name, y0, params, ts, step):
         empircal_derivative = (trajectory2[:,out_idx] - trajectory[:,out_idx]) / dv
         calculated_derivative = sensitivity[:,out_idx,in_idx]
 
-        plt.title(f'd({out_var})/d({in_var})')
+        plt.title(r'$\large\frac{d'+out_var+'}{d'+in_var+'}$', fontsize='large')
         plt.plot(ts, empircal_derivative, label='empirical')
         plt.plot(ts, calculated_derivative, label='calculated')
-        plt.legend(loc='best')
+        if i == 0: plt.legend(loc='upper left', fontsize='x-small')
         plt.grid()
     plt.show()
 
