@@ -10,7 +10,7 @@ import pickle
 import urllib.request
 import sys
 
-from common import *
+from util.common import *
 
 # --------------------------------------------------------------------------------
 

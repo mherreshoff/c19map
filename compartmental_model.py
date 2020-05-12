@@ -19,7 +19,7 @@ import sympy
 import sympy.utilities.lambdify
 import sys
 
-from common import *
+from util.common import *
 import integrators
 
 
