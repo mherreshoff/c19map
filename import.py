@@ -10,13 +10,14 @@ import pickle
 import urllib.request
 import sys
 
+import util.date as ud
 from util.common import *
 
 # --------------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser(description='Make time series files from Johns Hopkins University data')
-parser.add_argument("--start", default="2020-01-22", type=date_argument)
-parser.add_argument("--last", default="today", type=date_argument)
+parser.add_argument("--start", default="2020-01-22", type=ud.date_argument)
+parser.add_argument("--last", default="today", type=ud.date_argument)
 parser.add_argument("--interventions_doc",
         default="1-tj7Cjx3e3eSfFGhhhJTGikaydIclFG1QrD06Eh9oDM")
 parser.add_argument("--interventions_sheet", default="Interventions")
@@ -80,7 +81,7 @@ def fetch_intervention_data():
     csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
     csv_source = csv_as_dicts(io.StringIO(csv_str))
     print("Done.")
-    date_cols = [(parse_date(s), s) for s in csv_source.headers()]
+    date_cols = [(ud.parse_date(s), s) for s in csv_source.headers()]
     date_cols = sorted((d, s) for d, s in date_cols if d is not None)
     for d, d2 in zip(date_cols, date_cols[1:]):
         assert (d2[0]-d[0]).days == 1, "Dates must be consecutive.  Did a column get deleted?"
@@ -106,7 +107,7 @@ def fetch_intervention_data():
 # --------------------------------------------------------------------------------
 # Load our inputs:
 
-dates = date_range_inclusive(args.start, args.last)
+dates = ud.date_range_inclusive(args.start, args.last)
 raw_jhu_data = fetch_raw_jhu_data(dates)
 interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()

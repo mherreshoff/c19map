@@ -19,6 +19,7 @@ import sympy
 import sympy.utilities.lambdify
 import sys
 
+import util.date as ud
 from util.common import *
 import integrators
 
@@ -655,7 +656,7 @@ for k, p in sorted(places.items()):
     ax.xaxis.set_minor_formatter(minor_formatter)
     ax.set_ylabel('People (log)')
     plt.grid(True)
-    graph_dates = date_range_inclusive(
+    graph_dates = ud.date_range_inclusive(
             p.deaths.start_date(),
             p.deaths.last_date() + datetime.timedelta(args.graph_days_forecast))
     if args.graph_back: s = 0

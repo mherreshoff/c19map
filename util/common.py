@@ -1,4 +1,3 @@
-import argparse
 import collections
 import csv
 import datetime
@@ -13,14 +12,6 @@ import os
 def constant_fn(val):
     def f(*args): return val
     return f
-
-
-def friendly_round(n):
-    if not isinstance(n, numbers.Number): return n
-    if n >= 1000: return round(n, -3)
-    if n >= 100:  return round(n, -2)
-    if n >= 10:   return round(n, -1)
-    return 0
 
 
 class csv_as_dicts:
@@ -39,30 +30,6 @@ class csv_as_dicts:
     def __iter__(self):
         for row in self._csv_reader:
             yield {h: x for h,x in zip(self._headers, row)}
-
-
-def parse_date(s):
-    if s == "today": return datetime.date.today()
-    elif s == "yesterday": return datetime.date.today() - datetime.timedelta(1)
-    elif s == "tomorrow": return datetime.date.today() + datetime.timedelta(1)
-    try: return dateutil.parser.parse(s).date()
-    except ValueError: return None
-
-
-def date_argument(s):
-    d = parse_date(s)
-    if d is None: raise argparse.ArgumentTypeError("Unparsable date: " + s)
-    return d
-
-
-def date_range_inclusive(start_date, end_date, delta=None):
-    r = []
-    if delta is None: delta = datetime.timedelta(1)
-    date = start_date
-    while date <= end_date:
-        r.append(date)
-        date += delta
-    return r
 
 
 def maybe_makedir(dirname):
@@ -149,7 +116,6 @@ class TimeSeries:
     def items(self):
         for i, x in enumerate(self._array):
             yield (self.date(i), x)
-
 
 
 class Place:
