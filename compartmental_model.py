@@ -404,7 +404,7 @@ print(f"Parameters: {model.param_str()}")
 
 
 # Load the JHU time series data:
-places = pickle.load(open('time_series.pkl', 'rb'))
+places = pickle.load(open('places.pkl', 'rb'))
 
 intervention_behaviors = calculate_intervention_behaviors(
         model,

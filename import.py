@@ -253,7 +253,7 @@ correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
 # --------------------------------------------------------------------------------
 # Output Data.
 
-pickle_f = open('time_series.pkl', 'wb')
+pickle_f = open('places.pkl', 'wb')
 pickle.dump(places, pickle_f)
 pickle_f.close()
 

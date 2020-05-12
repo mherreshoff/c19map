@@ -15,7 +15,7 @@ parser.add_argument("-n", "--smoothing", type=int, default=3)
 args = parser.parse_args()
 
 # Load the data:
-places = pickle.load(open('time_series.pkl', 'rb'))
+places = pickle.load(open('places.pkl', 'rb'))
 
 intervention_date = {}
 for k, place in places.items():
@@ -53,6 +53,8 @@ all_vals = collections.defaultdict(list)
 for label,xs,ys in plots:
     for x,y in zip(xs, ys):
         all_vals[x].append(y)
+
+all_vals = {x: y for x, y in all_vals.items() if len(y) >= 3}
 
 average_points = [(x,np.average(all_vals[x])) for x in sorted(all_vals.keys())]
 average_xs = np.array([p[0] for p in average_points])
