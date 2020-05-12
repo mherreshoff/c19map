@@ -20,7 +20,6 @@ import sympy.utilities.lambdify
 import sys
 
 import util.date as ud
-from util.common import *
 import integrators
 
 
@@ -95,6 +94,11 @@ parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
 args = parser.parse_args()
+
+
+def constant_fn(val):
+    def f(*args): return val
+    return f
 
 # --------------------------------------------------------------------------------
 # Model

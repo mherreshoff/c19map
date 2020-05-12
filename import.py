@@ -12,7 +12,9 @@ import sys
 
 from util.csv import csv_as_dicts
 import util.date as ud
-from util.common import *
+from util.place import Place
+from util.recon import PlaceRecon
+from util.time_series import TimeSeries
 
 # --------------------------------------------------------------------------------
 
@@ -117,7 +119,7 @@ population = fetch_population_data()
 
 # --------------------------------------------------------------------------------
 # Reconcile the data together into one `Place` object for each region.
-canonicalizer = PlaceCanonicalizer()
+recon = PlaceRecon()
 places = {}
 interventions_recorded = set()
 populations_recorded = set()
@@ -147,7 +149,7 @@ for date, row_source in raw_jhu_data.items():
 
         p = (country, province, district)
         if p in throw_away_places: continue
-        p = canonicalizer.canonicalize(p)
+        p = recon.canonicalize(p)
         if p is None: continue
 
         if p not in places:

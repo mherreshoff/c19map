@@ -1,72 +1,9 @@
-import collections
-import datetime
-import dateutil.parser
-import numpy as np
-import numbers
 import os
-
-
-# -------------------------------------------------- 
-# Generic helpers:
-
-def constant_fn(val):
-    def f(*args): return val
-    return f
-
-def maybe_makedir(dirname):
-    if not os.path.exists(dirname): os.makedirs(dirname)
-
-
-from util.time_series import TimeSeries
-
-class Place:
-    """All the data we know about a place:
-
-    - Johns Hopkins time series for deaths, confirmed, and recovered
-    - Population, latitude, and longitude.
-    - Intervention time series.
-    """
-    def __init__(self, dates):
-        self.country = None
-        self.province = None
-        self.district = None
-        self.latitude = None
-        self.longitude = None
-        self.population = None
-
-        self.confirmed = TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
-        self.deaths = TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
-        self.recovered =  TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
-
-        self.interventions = None
-
-    def key(self):
-        return (self.country, self.province, self.district)
-
-    def set_key(self, k):
-        self.country, self.province, self.district = k
-
-    def region_id(self):
-        return ' - '.join(k for k in self.key() if k != '')
-
-    def display_name(self):
-        parts = list(collections.OrderedDict.fromkeys(self.key()))
-        return ' - '.join(p for p in parts if p != '')
-
-    def update(self, k, day, num):
-        if k == 'confirmed': a = self.confirmed
-        elif k == 'deaths': a = self.deaths
-        elif k == 'recovered': a = self.recovered
-        else: raise KeyError
-        if num == '': return
-        num = int(num)
-        a[day] = max(a[day], num)
-
 
 from util.csv import csv_as_dicts
 
 # Canonicalization/reconciliation:
-class PlaceCanonicalizer:
+class PlaceRecon:
     def __init__(self):
         def g(x): return csv_as_dicts(os.path.join('recon', x))
         self.country_renames = {r["Old Country"]: r["New Country"]
