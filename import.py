@@ -33,6 +33,7 @@ parser.add_argument("--JHU_url_format", default=(
     'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master'+
     '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
 parser.add_argument('--JHU_data_dir', default='JHU_data')
+parser.add_argument('--output_csvs', action='store_true')
 args = parser.parse_args()
 
 
@@ -253,30 +254,29 @@ correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
 # --------------------------------------------------------------------------------
 # Output Data.
 
-pickle_f = open('places.pkl', 'wb')
-pickle.dump(places, pickle_f)
-pickle_f.close()
+with open('places.pkl', 'wb') as pickle_f:
+    pickle.dump(places, pickle_f)
 
+if args.output_csvs:
+    confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
+    deaths_out = csv.writer(open("time_series_deaths.csv", 'w'))
+    recovered_out = csv.writer(open("time_series_recovered.csv", 'w'))
 
-confirmed_out = csv.writer(open("time_series_confirmed.csv", 'w'))
-deaths_out = csv.writer(open("time_series_deaths.csv", 'w'))
-recovered_out = csv.writer(open("time_series_recovered.csv", 'w'))
+    headers = ["Province/State","Country/Region","Lat","Long"]
+    headers += [d.strftime("%m/%d/%y") for d in dates]
+    confirmed_out.writerow(headers)
+    deaths_out.writerow(headers)
+    recovered_out.writerow(headers)
 
-headers = ["Province/State","Country/Region","Lat","Long"]
-headers += [d.strftime("%m/%d/%y") for d in dates]
-confirmed_out.writerow(headers)
-deaths_out.writerow(headers)
-recovered_out.writerow(headers)
+    for p in sorted(places.keys()):
+        country, province, district = p
+        if district: continue
+        if sum(places[p].confirmed) == 0: continue  #Skip if no data.
 
-for p in sorted(places.keys()):
-    country, province, district = p
-    if district: continue
-    if sum(places[p].confirmed) == 0: continue  #Skip if no data.
-
-    latitude = places[p].latitude or ''
-    longitude = places[p].longitude or ''
-    row_start = [province, country, latitude, longitude]
-    confirmed_out.writerow(row_start + list(places[p].confirmed))
-    deaths_out.writerow(row_start + list(places[p].deaths))
-    recovered_out.writerow(row_start + list(places[p].recovered))
+        latitude = places[p].latitude or ''
+        longitude = places[p].longitude or ''
+        row_start = [province, country, latitude, longitude]
+        confirmed_out.writerow(row_start + list(places[p].confirmed))
+        deaths_out.writerow(row_start + list(places[p].deaths))
+        recovered_out.writerow(row_start + list(places[p].recovered))
 
