@@ -1,10 +1,11 @@
 import collections
-import csv
 import datetime
 import dateutil.parser
 import numpy as np
 import numbers
 import os
+
+from util.csv import csv_as_dicts
 
 # -------------------------------------------------- 
 # Generic helpers:
@@ -12,25 +13,6 @@ import os
 def constant_fn(val):
     def f(*args): return val
     return f
-
-
-class csv_as_dicts:
-    def __init__(self, source):
-        if isinstance(source, str): source = open(source, 'r')
-        self._csv_reader = csv.reader(source)
-        self._headers = next(self._csv_reader)
-
-    def headers(self):
-        return self._headers
-
-    def set_headers(self, headers):
-        assert len(headers) == len(self._headers), "Can't change column count."
-        self._headers = headers
-
-    def __iter__(self):
-        for row in self._csv_reader:
-            yield {h: x for h,x in zip(self._headers, row)}
-
 
 def maybe_makedir(dirname):
     if not os.path.exists(dirname): os.makedirs(dirname)

@@ -10,6 +10,7 @@ import pickle
 import urllib.request
 import sys
 
+from util.csv import csv_as_dicts
 import util.date as ud
 from util.common import *
 
