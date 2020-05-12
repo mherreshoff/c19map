@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 
-from common import *
-
 parser = argparse.ArgumentParser(description='Plot death growth rates offset by intervention.')
 parser.add_argument("-i", "--intervention", default="Lockdown")
 parser.add_argument("-m", "--mindeaths", type=int, default=100)
