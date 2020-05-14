@@ -93,6 +93,11 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
+graph_annontation="""\
+Note: Future values are extrapolated assuming no change to intervention status.
+Disclaimer: Accuracy of predictions may decrease with time due to compounding effects.\
+"""
+
 args = parser.parse_args()
 
 
@@ -649,7 +654,7 @@ for k, p in sorted(places.items()):
         old_s = s
     intervention_s = ', '.join(f"{s} on {d.strftime('%m-%d')}"
             for n,(d,s) in enumerate(intervention_starts))
-    ax.set_title(p.region_id() + "\n" + intervention_s)
+    ax.set_title(f"c19map.org: {p.region_id()}\n{intervention_s}")
     ax.set_xlabel('Date')
     ax.xaxis.set_tick_params(which='both', labelsize=5, labelrotation=90)
     ax.xaxis.set_major_locator(matplotlib.dates.DayLocator(bymonthday=[1,15]))
@@ -693,10 +698,12 @@ for k, p in sorted(places.items()):
     ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= ymax])
     ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= ymax], minor=True)
 
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width * 0.9, box.height])
-    legend = ax.legend(bbox_to_anchor=(1.04,1), loc='upper left',
+    x,y,w,h = ax.get_position().bounds
+    ax.set_position([x, y+h*0.1, w * 0.9, h * 0.9])
+    legend = ax.legend(bbox_to_anchor=(1.02,1), loc='upper left',
             fontsize='xx-small', borderaxespad=0)
+    plt.annotate(graph_annontation,
+            (0,0), (0, -35), xycoords='axes fraction', textcoords='offset points', va='top', fontsize='xx-small')
     plt.savefig(os.path.join('graphs', p.region_id() + '.png'), dpi=100)
     plt.close('all') # Reset plot for next time.
 
