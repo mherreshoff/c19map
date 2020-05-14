@@ -35,8 +35,8 @@ ode_cython.declare_ode(
             "infectious_leave_rate"],
         influences=["beta"],
         derivatives={
-            "S": "-I*beta*S/(S+E+I+H+R)",
-            "E": "I*beta*S/(S+E+I+H+R) - E*exposed_leave_rate",
+            "S": "-I*beta*S/(S+E+I+R)",
+            "E": "I*beta*S/(S+E+I+R) - E*exposed_leave_rate",
             "I": "E*exposed_leave_rate - I*infectious_leave_rate",
             "R": "I*infectious_leave_rate"})
 
