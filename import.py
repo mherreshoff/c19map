@@ -175,34 +175,6 @@ for date, row_source in raw_jhu_data.items():
 
 
 # --------------------------------------------------------------------------------
-# Warnings for catching missing data.
-
-# These are the countries we already weren't bothering to simulate.
-# By silencing them, these warnings can flag that a country got misspelt
-# in or deleted from the population table (or JHU added a new country.)
-SILENCE_POPULATION_WARNINGS = set([
-    ('Australia', 'External territories', ''),
-    ('Australia', 'Jervis Bay Territory', ''),
-    ('France', 'Saint Pierre and Miquelon', ''),
-    ('Netherlands', 'Bonaire, Sint Eustatius and Saba', ''),
-    ('United Kingdom', 'Anguilla', ''),
-    ('United Kingdom', 'British Virgin Islands', ''),
-    ('United Kingdom', 'Falkland Islands (Islas Malvinas)', ''),
-    ('United Kingdom', 'Falkland Islands (Malvinas)', ''),
-    ('United Kingdom', 'Turks and Caicos Islands', ''),
-    ('West Bank and Gaza', '', '')])
-
-for p in sorted(places.values(), key=lambda p: p.key()):
-    if p.population is None and p.district == '':
-        if p.key() not in SILENCE_POPULATION_WARNINGS:
-            print("No population data for ", p.region_id())
-
-for p in sorted(interventions.keys()):
-    if p not in interventions_recorded:
-        print("Lost intervention data for: ", p)
-
-
-# --------------------------------------------------------------------------------
 # Edits to the data to fix various artefacts and glitches.
 
 # Consolidate US county data into states:
@@ -222,6 +194,20 @@ def consolidate_to_province_level(country):
             del places[p]  # Avoid double-counting.
 
 consolidate_to_province_level("US")
+
+def consolidate_to_country_level(country):
+    target = places[(country, '', '')]
+    for p in sorted(places.keys()):
+        if p[0] == country and p[1] != '':
+            target.confirmed += places[p].confirmed
+            target.deaths += places[p].deaths
+            target.recovered += places[p].recovered
+            del places[p]
+
+consolidate_to_country_level("Germany")
+consolidate_to_country_level("Italy")
+consolidate_to_country_level("Spain")
+
 
 # Fix the fact that France was recorded as French Polynesia on March 23rd:
 def correct_misrecorded_place(d, correct_p, recorded_p):
@@ -250,6 +236,29 @@ def correct_late_reporting(p, d):
     place.deaths.array()[:pos] = new_deaths.astype(int)
 
 correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
+
+# --------------------------------------------------------------------------------
+# Warnings for catching missing data.
+
+# These are the countries we already weren't bothering to simulate.
+# By silencing them, these warnings can flag that a country got misspelt
+# in or deleted from the population table (or JHU added a new country.)
+SILENCE_POPULATION_WARNINGS = set([
+    ('Australia', 'External territories', ''),
+    ('Australia', 'Jervis Bay Territory', ''),
+    ('France', 'Saint Pierre and Miquelon', ''),
+    ('Netherlands', 'Bonaire, Sint Eustatius and Saba', ''),
+    ('United Kingdom', 'Anguilla', ''),
+    ('United Kingdom', 'British Virgin Islands', ''),
+    ('United Kingdom', 'Falkland Islands (Islas Malvinas)', ''),
+    ('United Kingdom', 'Falkland Islands (Malvinas)', ''),
+    ('United Kingdom', 'Turks and Caicos Islands', ''),
+    ('West Bank and Gaza', '', '')])
+
+for p in sorted(interventions.keys()):
+    if p not in interventions_recorded:
+        print("Lost intervention data for: ", p)
+
 
 # --------------------------------------------------------------------------------
 # Output Data.
