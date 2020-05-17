@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# NOTE: Experimental.
 import arviz as az
 import matplotlib.pyplot as plt
 import numpy as np
