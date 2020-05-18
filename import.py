@@ -6,8 +6,9 @@ import datetime
 import io
 import numpy as np
 import os
+from pathlib import Path
 import pickle
-import urllib.request
+import requests
 import sys
 
 from util.csv import csv_as_dicts
@@ -32,7 +33,7 @@ parser.add_argument("--sheets_csv_fetcher", default=(
 parser.add_argument("--JHU_url_format", default=(
     'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master'+
     '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
-parser.add_argument('--JHU_data_dir', default='JHU_data')
+parser.add_argument('--JHU_data_dir', default='downloads/JHU')
 parser.add_argument('--output_csvs', action='store_true')
 args = parser.parse_args()
 
@@ -40,21 +41,43 @@ args = parser.parse_args()
 # --------------------------------------------------------------------------------
 # Funtions which fetch data from JHU's github and our spreadsheets.
 
+def fetch(source_url, dest_file, cache=False, verbose=True):
+    if os.path.exists(dest_file):
+        if isinstance(cache, datetime.timedelta):
+            last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(dest_file))
+            age = datetime.datetime.now() - last_modified
+            download = (age >= cache)
+        elif isinstance(cache, bool):
+            download = not cache
+        else:
+            raise ValueError(f'Unrecognized cache value: {cache}')
+    else:
+        Path(dest_file).parent.mkdir(parents=True, exist_ok=True)
+        download = True
+    if download:
+        if verbose:
+            print(f'Downloading: {source_url} ---> {dest_file}')
+        r = requests.get(source_url)
+        r.raise_for_status()
+        open(dest_file, 'w').write(r.text)
+        return r.text
+    else:
+        return open(dest_file).read()
+
+
 def fetch_raw_jhu_data(dates):
     jhu_data = {}
     for date in dates:
         url = date.strftime(args.JHU_url_format)
         file_path = os.path.join(args.JHU_data_dir, date.isoformat() + ".csv")
-        if not os.path.exists(file_path):
-            print(f"Downloading {file_path} from: {url}")
-            try:
-                urllib.request.urlretrieve(url, file_path)
-            except urllib.error.HTTPError as e:
-                print(f"Couldn't fetch: {url}")
-                print(f"The fetch failed with code {e.code}: {e.reason}")
-                if e.code == 404:
-                    print(f"It seems JHU has not yet published the data for {date.isoformat()}.")
-                sys.exit(1)
+        try:
+            fetch(url, file_path, cache=True)
+        except requests.exceptions.HTTPError as e:
+            print(f"Couldn't fetch: {url}")
+            print(f"The fetch failed with code {e.response.status_code}: {e.response.reason}")
+            if e.response.status_code == 404:
+                print(f"It seems JHU has not yet published the data for {date.isoformat()}.")
+            sys.exit(1)
         jhu_data[date] = csv_as_dicts(open(file_path, encoding='utf-8-sig'))
         # Note: utf-8-sig gets rid of unicode byte order mark characters.
     return jhu_data
@@ -62,12 +85,10 @@ def fetch_raw_jhu_data(dates):
 
 def fetch_population_data():
     """Download c19map.org's population data."""
-    print("Downloading population data...")
     csv_url = args.sheets_csv_fetcher.format(
         doc=args.population_doc, sheet=args.population_sheet)
-    csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
+    csv_str = fetch(csv_url, 'downloads/population.csv', cache=datetime.timedelta(hours=1))
     csv_source = csv_as_dicts(io.StringIO(csv_str))
-    print("Done.")
     populations = {}
     for row in csv_source:
         country = row["Country/Region"]
@@ -79,12 +100,10 @@ def fetch_population_data():
 
 def fetch_intervention_data():
     """Download c19map.org's intervention data."""
-    print("Downloading intervention data...")
     csv_url = args.sheets_csv_fetcher.format(
         doc=args.interventions_doc, sheet=args.interventions_sheet)
-    csv_str = urllib.request.urlopen(csv_url).read().decode('utf-8')
+    csv_str = fetch(csv_url, 'downloads/interventions.csv', cache=datetime.timedelta(hours=1))
     csv_source = csv_as_dicts(io.StringIO(csv_str))
-    print("Done.")
     date_cols = [(ud.parse_date(s), s) for s in csv_source.headers()]
     date_cols = sorted((d, s) for d, s in date_cols if d is not None)
     for d, d2 in zip(date_cols, date_cols[1:]):
