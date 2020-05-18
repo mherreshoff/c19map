@@ -127,6 +127,16 @@ def fetch_intervention_data():
         interventions[place] = TimeSeries(start_date, intervention_list)
     return interventions, unknown
 
+
+def fetch_mobility_data():
+    csv_str = fetch(
+            'https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv',
+            'downloads/google_mobility.csv', cache=datetime.timedelta(hours=1))
+    csv_source = csv_as_dicts(io.StringIO(csv_str))
+    # TODO: Segment the rows by region.
+    return csv_source
+
+
 # --------------------------------------------------------------------------------
 # Load our inputs:
 
@@ -135,6 +145,7 @@ raw_jhu_data = fetch_raw_jhu_data(dates)
 interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()
 population = fetch_population_data()
+mobility_data = fetch_mobility_data()
 
 
 # --------------------------------------------------------------------------------
