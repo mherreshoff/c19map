@@ -37,20 +37,15 @@ class PlaceRecon:
 
     def canonicalize_country(self, c):
         if c in self.country_cache: return self.country_cache[c]
-        code = coco.convert(names=c, src='regex', to='iso2', not_found='??')
-        name = None
-        if code == '??':
+        name = coco.convert(names=c, src='regex', to='short_name', not_found='??')
+        if name == '??':
             self.unrecognized_countries.add(c)
             if c == "Republic of Ireland":
-                code = "IE"
-                name = None
+                name = "Ireland"
             else:
                 name = c
-        if name is None:
-            name = coco.convert(names=code, src='iso2', to='short_name', not_found='???')
-        result = (code, name)
-        self.country_cache[c] = result
-        return result
+        self.country_cache[c] = name
+        return name
 
     def canonicalize(self, p):
         if p in self.place_cache: return self.place_cache[p]
@@ -63,10 +58,14 @@ class PlaceRecon:
                     self.place_cache[old_p] = None
                     return None
 
-        country_code, country_name = self.canonicalize_country(p[0])
+        # Sometimes the old country name gets duplicated.
+        while p[0] and p[0] == p[1]:
+            p = (p[0], p[2], '')
+
+        country_name = self.canonicalize_country(p[0])
         p = (country_name, p[1], p[2])
 
-        # Sometimes fields get repeated
+        # Sometimes the new country name gets duplicated.
         while p[0] and p[0] == p[1]:
             p = (p[0], p[2], '')
 

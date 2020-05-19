@@ -156,7 +156,16 @@ interventions_recorded = set()
 populations_recorded = set()
 unknown_interventions_places = set()
 
-population = {recon.canonicalize(k): v for k,v in population.items()}
+new_population = {}
+for k, v in population.items():
+    k = recon.canonicalize(k)
+    if k:
+        new_population[k] = v
+population = new_population
+print()
+for k, p in sorted(population.items()):
+    print(f'pop{k} ---> {p}')
+
 interventions = {recon.canonicalize(k): v for k,v in interventions.items()}
 
 throw_away_places = set([
@@ -309,21 +318,30 @@ SILENCE_POPULATION_WARNINGS = set([
     ('United Kingdom', 'Turks and Caicos Islands', ''),
     ('West Bank and Gaza', '', '')])
 
+print()
 for k, p in sorted(places.items()):
-    if not p.population and k not in SILENCE_POPULATION_WARNINGS:
+    if not p.population is None:
         print("No Population Data: ", k)
 
+print()
 for k, p in sorted(places.items()):
-    if not p.interventions and k not in SILENCE_POPULATION_WARNINGS:
+    if p.interventions is None:
         print("No Intervention Data: ", k)
 
+print()
 for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
         print("Lost intervention data for: ", p)
 
+print()
+for p in sorted(population.keys()):
+    if p not in populations_recorded:
+        print("Lost population data for: ", p)
+
 
 # --------------------------------------------------------------------------------
 # Output Data.
+print()
 for k in sorted(places.keys()):
     print(' --- '.join(k))
 
