@@ -156,6 +156,9 @@ interventions_recorded = set()
 populations_recorded = set()
 unknown_interventions_places = set()
 
+population = {recon.canonicalize(k): v for k,v in population.items()}
+interventions = {recon.canonicalize(k): v for k,v in interventions.items()}
+
 throw_away_places = set([
     ('US', 'US', ''), ('Australia', '', ''),
     ('Canada', 'Recovered', ''),
@@ -203,6 +206,26 @@ for date, row_source in raw_jhu_data.items():
         places[p].update('deaths', date, deaths)
         places[p].update('recovered', date, recovered)
 
+# Sanity check make sure we don't have two synonymous countries left:
+import country_converter as coco
+countries = sorted(set(p.country for p in places.values()))
+iso_codes = coco.convert(names=countries, src='regex', to='iso3')
+for i1, c1 in enumerate(countries):
+    for i2 in range(i1+1, len(countries)):
+        c2 = countries[i2]
+        a1 = iso_codes[i1]
+        a2 = iso_codes[i2]
+        if a1 == a2:
+            print(f'Country collision {c1} {c2} --> {a1} {a2}')
+
+for r in sorted(recon.unrecognized_countries):
+    print(f"Unrecognized country: {r}")
+print()
+
+for r in sorted(recon.place_renames.keys()):
+    if r not in recon.used_renames:
+        print(f"Unused rename: {r}")
+print()
 
 # --------------------------------------------------------------------------------
 # Edits to the data to fix various artefacts and glitches.
@@ -223,7 +246,8 @@ def consolidate_to_province_level(country):
             places[state].recovered += places[p].recovered
             del places[p]  # Avoid double-counting.
 
-consolidate_to_province_level("US")
+consolidate_to_province_level("United States")
+consolidate_to_province_level("Canada")
 
 def consolidate_to_country_level(country):
     target = places[(country, '', '')]
@@ -253,7 +277,7 @@ def correct_misrecorded_place(d, correct_p, recorded_p):
 
 correct_misrecorded_place(
         datetime.date(2020, 3, 23),
-        ('France', 'France', ''), ('France', 'French Polynesia', ''))
+        ('France', '', ''), ('French Polynesia', '', ''))
 
 # Hubei China suddenly increased their reported deaths on April 17th.
 # Until we get better data from before then, we'll scale everything before that date up.
@@ -285,6 +309,14 @@ SILENCE_POPULATION_WARNINGS = set([
     ('United Kingdom', 'Turks and Caicos Islands', ''),
     ('West Bank and Gaza', '', '')])
 
+for k, p in sorted(places.items()):
+    if not p.population and k not in SILENCE_POPULATION_WARNINGS:
+        print("No Population Data: ", k)
+
+for k, p in sorted(places.items()):
+    if not p.interventions and k not in SILENCE_POPULATION_WARNINGS:
+        print("No Intervention Data: ", k)
+
 for p in sorted(interventions.keys()):
     if p not in interventions_recorded:
         print("Lost intervention data for: ", p)
@@ -292,6 +324,8 @@ for p in sorted(interventions.keys()):
 
 # --------------------------------------------------------------------------------
 # Output Data.
+for k in sorted(places.keys()):
+    print(' --- '.join(k))
 
 with open('places.pkl', 'wb') as pickle_f:
     pickle.dump(places, pickle_f)
