@@ -5,6 +5,7 @@
 *.prof
 *.sh
 *.so
+*.txt
 *.pyx
 *_estimated_*
 .DS_Store
