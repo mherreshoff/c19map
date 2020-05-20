@@ -191,9 +191,21 @@ google_mobility_recorded = set()
 unknown_google_mobility = set()
 
 # First reconcile the auxiliary data:
-population = {recon.canonicalize(k): v for k,v in population.items()}
-interventions = {recon.canonicalize(k): v for k,v in interventions.items()}
-google_mobility = {recon.canonicalize(k): v for k,v in google_mobility.items()}
+def canonicalize_map(original, name):
+    processed = {}
+    back_map = {}
+    for old_k,v in sorted(original.items()):
+        k = recon.canonicalize(old_k)
+        if k in processed:
+            print(f"Warning: duplicate {name} entries for {k}: {old_k} and {back_map[k]}")
+            continue
+        back_map[k] = old_k
+        processed[k] = v
+    return processed
+
+population = canonicalize_map(population, 'population')
+interventions = canonicalize_map(interventions, 'interventions')
+google_mobility = canonicalize_map(google_mobility, 'google_mobility')
 
 def create_place(p):
     places[p] = Place(dates)
@@ -317,13 +329,6 @@ correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
 # --------------------------------------------------------------------------------
 # Warnings for catching missing data, etc.
 
-for r in sorted(recon.unrecognized_countries):
-    print(f"country_converter did not recognize: {r}")
-
-for r in sorted(recon.place_renames.keys()):
-    if r not in recon.used_renames:
-        print(f"Unused rename: {r}")
-
 # These are the countries we already weren't bothering to simulate.
 # By silencing them, these warnings can flag that a country got misspelt
 # in or deleted from the population table (or JHU added a new country.)
@@ -333,6 +338,10 @@ SILENCE_POPULATION_WARNINGS = set([
     ('Bonaire, Sint Eustatius and Saba', '', ''),
     ('United States', 'Wuhan Evacuee', '')])
 
+
+for r in sorted(recon.unrecognized_countries):
+    print(f"country_converter did not recognize: {r}")
+print()
 
 if args.print_renames:
     print('RENAMES:')
@@ -358,6 +367,12 @@ print()
 for k in sorted(google_mobility.keys()):
     if k not in google_mobility_recorded and k[1] == '':
         print("Lost country-level google mobility data for: ", k)
+
+for k in sorted(google_mobility.keys()):
+    if (k not in google_mobility_recorded and
+            k[0] in ["United States", "Canada", "Australia"] and
+            k[1] != '' and k[2] == ''):
+        print("Lost province-level google mobility data for: ", k)
 
 
 # --------------------------------------------------------------------------------

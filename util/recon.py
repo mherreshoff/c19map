@@ -84,10 +84,6 @@ class PlaceRecon:
             a = [x.strip() for x in p[1].split(',')]
             if len(a) == 2 and a[1] in self.code_to_us_state:
                 p = (p[0], self.code_to_us_state[a[1]], a[0])
-            # Remove the word 'County' from the district field.
-            words = p[2].split(' ')
-            if words[-1] == 'County':
-                p = (p[0], p[1], ' '.join(words[:-1]))
 
         if p[0] == "Canada":
             # Handle province fields like "Montreal, QC"
