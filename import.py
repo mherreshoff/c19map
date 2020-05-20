@@ -6,6 +6,7 @@ import datetime
 import io
 import numpy as np
 import os
+import pandas as pd
 from pathlib import Path
 import pickle
 import requests
@@ -130,12 +131,41 @@ def fetch_intervention_data():
 
 
 def fetch_mobility_data():
+    frame_by_place = {}
     csv_str = fetch(
             'https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv',
             'downloads/google_mobility.csv', cache=datetime.timedelta(hours=1))
-    csv_source = csv_as_dicts(io.StringIO(csv_str))
-    # TODO: Segment the rows by region.
-    return csv_source
+    region_cols = ['country_region','sub_region_1','sub_region_2']
+    entire_frame = pd.read_csv(io.StringIO(csv_str), dtype={
+        'country_region_code': str,
+        'country_region': str,
+        'sub_region_1': str,
+        'sub_region_2': str,
+        'date': str,
+        'retail_and_recreation_percent_change_from_baseline': np.float64,
+        'grocery_and_pharmacy_percent_change_from_baseline': np.float64,
+        'parks_percent_change_from_baseline': np.float64,
+        'transit_stations_percent_change_from_baseline': np.float64,
+        'workplaces_percent_change_from_baseline': np.float64,
+        'residential_percent_change_from_baseline': np.float64})
+    groups = entire_frame.groupby(region_cols)
+    for r in region_cols:
+        entire_frame[r].fillna('', inplace=True)
+
+    # entire_frame = entire_frame.rename(columns=lambda s: s[:3])
+    for key, df in sorted((key, df) for key, df in groups):
+        date_col = df['date']
+        df = df.drop(columns=[c for c in list(df.columns) if 'percent_change' not in c])
+        df = (df + 100) / 100  # Convert percent changes to fractions of original.
+        df = df.rename(columns=lambda s: s.replace('_percent_change_from_baseline', '_fraction'))
+        df['date'] = date_col
+        df = df.set_index('date')
+        frame_by_place[key] = df
+        if False:
+            print('-'*100)
+            print(key)
+            print(df)
+    return frame_by_place
 
 
 # --------------------------------------------------------------------------------
