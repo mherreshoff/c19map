@@ -23,6 +23,7 @@ class Place:
         self.recovered =  TimeSeries(dates[0], np.zeros(len(dates), dtype=int))
 
         self.interventions = None
+        self.google_mobility = None
 
     def key(self):
         return (self.country, self.province, self.district)

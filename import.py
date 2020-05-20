@@ -43,7 +43,7 @@ args = parser.parse_args()
 # --------------------------------------------------------------------------------
 # Funtions which fetch data from JHU's github and our spreadsheets.
 
-def fetch(source_url, dest_file, cache=False, verbose=True):
+def fetch(source_url, dest_file, cache=False, verbose=True, encoding=None):
     if os.path.exists(dest_file):
         if isinstance(cache, datetime.timedelta):
             last_modified = datetime.datetime.fromtimestamp(os.path.getmtime(dest_file))
@@ -60,6 +60,7 @@ def fetch(source_url, dest_file, cache=False, verbose=True):
         if verbose:
             print(f'Downloading: {source_url} ---> {dest_file}')
         r = requests.get(source_url)
+        if encoding: r.encoding = encoding
         r.raise_for_status()
         open(dest_file, 'w').write(r.text)
         return r.text
@@ -130,41 +131,41 @@ def fetch_intervention_data():
     return interventions, unknown
 
 
-def fetch_mobility_data():
+def fetch_google_mobility_data():
     frame_by_place = {}
     csv_str = fetch(
             'https://www.gstatic.com/covid19/mobility/Global_Mobility_Report.csv',
-            'downloads/google_mobility.csv', cache=datetime.timedelta(hours=1))
+            'downloads/google_mobility.csv', cache=datetime.timedelta(hours=1),
+            encoding='utf-8')
     region_cols = ['country_region','sub_region_1','sub_region_2']
     entire_frame = pd.read_csv(io.StringIO(csv_str), dtype={
-        'country_region_code': str,
-        'country_region': str,
-        'sub_region_1': str,
-        'sub_region_2': str,
-        'date': str,
+        'country_region_code': 'object',
+        'country_region': 'object',
+        'sub_region_1': 'object',
+        'sub_region_2': 'object',
+        'date': 'object',
         'retail_and_recreation_percent_change_from_baseline': np.float64,
         'grocery_and_pharmacy_percent_change_from_baseline': np.float64,
         'parks_percent_change_from_baseline': np.float64,
         'transit_stations_percent_change_from_baseline': np.float64,
         'workplaces_percent_change_from_baseline': np.float64,
-        'residential_percent_change_from_baseline': np.float64})
+        'residential_percent_change_from_baseline': np.float64},
+        parse_dates=['date'],
+        encoding='utf8')
     groups = entire_frame.groupby(region_cols)
+
+    # Blank strings in region columns aren't missing data:
     for r in region_cols:
         entire_frame[r].fillna('', inplace=True)
 
-    # entire_frame = entire_frame.rename(columns=lambda s: s[:3])
     for key, df in sorted((key, df) for key, df in groups):
         date_col = df['date']
-        df = df.drop(columns=[c for c in list(df.columns) if 'percent_change' not in c])
+        df = df.drop(columns=[c for c in df.columns if 'percent_change' not in c])
         df = (df + 100) / 100  # Convert percent changes to fractions of original.
         df = df.rename(columns=lambda s: s.replace('_percent_change_from_baseline', '_fraction'))
         df['date'] = date_col
         df = df.set_index('date')
         frame_by_place[key] = df
-        if False:
-            print('-'*100)
-            print(key)
-            print(df)
     return frame_by_place
 
 
@@ -173,28 +174,47 @@ def fetch_mobility_data():
 
 dates = ud.date_range_inclusive(args.start, args.last)
 raw_jhu_data = fetch_raw_jhu_data(dates)
+population = fetch_population_data()
 interventions, intervention_unknown = fetch_intervention_data()
 intervention_dates = intervention_unknown.dates()
-population = fetch_population_data()
-mobility_data = fetch_mobility_data()
+google_mobility = fetch_google_mobility_data()
 
 
 # --------------------------------------------------------------------------------
 # Reconcile the data together into one `Place` object for each region.
 recon = PlaceRecon()
 places = {}
-interventions_recorded = set()
 populations_recorded = set()
+interventions_recorded = set()
 unknown_interventions_places = set()
+google_mobility_recorded = set()
+unknown_google_mobility = set()
 
-new_population = {}
-for k, v in population.items():
-    k = recon.canonicalize(k)
-    if k:
-        new_population[k] = v
-population = new_population
-
+# First reconcile the auxiliary data:
+population = {recon.canonicalize(k): v for k,v in population.items()}
 interventions = {recon.canonicalize(k): v for k,v in interventions.items()}
+google_mobility = {recon.canonicalize(k): v for k,v in google_mobility.items()}
+
+def create_place(p):
+    places[p] = Place(dates)
+    places[p].set_key(p)
+    if p in population:
+        places[p].population = population[p]
+        populations_recorded.add(p)
+    if p in interventions:
+        places[p].interventions = interventions[p]
+        interventions_recorded.add(p)
+    else:
+        places[p].interventions = intervention_unknown
+        unknown_interventions_places.add(p)
+    if p in google_mobility:
+        places[p].google_mobility = google_mobility[p]
+        google_mobility_recorded.add(p)
+    else:
+        places[p].google_mobility = None
+        unknown_google_mobility.add(p)
+
+
 
 throw_away_places = set([
     ('US', 'US', ''), ('Australia', '', ''),
@@ -223,18 +243,7 @@ for date, row_source in raw_jhu_data.items():
         if recon.is_ship(p): continue
         p = recon.canonicalize(p)
 
-        if p not in places:
-            places[p] = Place(dates)
-            places[p].set_key(p)
-            if p in population:
-                places[p].population = population[p]
-                populations_recorded.add(p)
-            if p in interventions:
-                places[p].interventions = interventions[p]
-                interventions_recorded.add(p)
-            else:
-                places[p].interventions = intervention_unknown
-                unknown_interventions_places.add(p)
+        if p not in places: create_place(p)
 
         if latitude is not None and longitude is not None:
             places[p].latitude = latitude
@@ -253,11 +262,7 @@ def consolidate_to_province_level(country):
         if p[0] == country and p[2] != '':
             state = (p[0], p[1], '')
             if state not in places:
-                places[state] = Place(dates)
-                places[state].set_key(state)
-                if p in population:
-                    places[p].population = population[p]
-                places[state].interventions = intervention_unknown
+                create_place(state)
             places[state].confirmed += places[p].confirmed
             places[state].deaths += places[p].deaths
             places[state].recovered += places[p].recovered
@@ -348,6 +353,11 @@ print()
 for k in sorted(interventions.keys()):
     if k not in interventions_recorded:
         print("Lost intervention data for: ", k)
+
+print()
+for k in sorted(google_mobility.keys()):
+    if k not in google_mobility_recorded and k[1] == '':
+        print("Lost country-level google mobility data for: ", k)
 
 
 # --------------------------------------------------------------------------------
