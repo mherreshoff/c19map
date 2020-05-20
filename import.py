@@ -35,6 +35,7 @@ parser.add_argument("--JHU_url_format", default=(
     '/csse_covid_19_data/csse_covid_19_daily_reports/%m-%d-%Y.csv'))
 parser.add_argument('--JHU_data_dir', default='downloads/JHU')
 parser.add_argument('--output_csvs', action='store_true')
+parser.add_argument('--print_renames', action='store_true')
 args = parser.parse_args()
 
 
@@ -162,9 +163,6 @@ for k, v in population.items():
     if k:
         new_population[k] = v
 population = new_population
-print()
-for k, p in sorted(population.items()):
-    print(f'pop{k} ---> {p}')
 
 interventions = {recon.canonicalize(k): v for k,v in interventions.items()}
 
@@ -192,8 +190,8 @@ for date, row_source in raw_jhu_data.items():
 
         p = (country, province, district)
         if p in throw_away_places: continue
+        if recon.is_ship(p): continue
         p = recon.canonicalize(p)
-        if p is None: continue
 
         if p not in places:
             places[p] = Place(dates)
@@ -215,31 +213,11 @@ for date, row_source in raw_jhu_data.items():
         places[p].update('deaths', date, deaths)
         places[p].update('recovered', date, recovered)
 
-# Sanity check make sure we don't have two synonymous countries left:
-import country_converter as coco
-countries = sorted(set(p.country for p in places.values()))
-iso_codes = coco.convert(names=countries, src='regex', to='iso3')
-for i1, c1 in enumerate(countries):
-    for i2 in range(i1+1, len(countries)):
-        c2 = countries[i2]
-        a1 = iso_codes[i1]
-        a2 = iso_codes[i2]
-        if a1 == a2:
-            print(f'Country collision {c1} {c2} --> {a1} {a2}')
-
-for r in sorted(recon.unrecognized_countries):
-    print(f"Unrecognized country: {r}")
-print()
-
-for r in sorted(recon.place_renames.keys()):
-    if r not in recon.used_renames:
-        print(f"Unused rename: {r}")
-print()
 
 # --------------------------------------------------------------------------------
 # Edits to the data to fix various artefacts and glitches.
 
-# Consolidate US county data into states:
+# Consolidate county data into provinces/states:
 def consolidate_to_province_level(country):
     for p in sorted(places.keys()):
         if p[0] == country and p[2] != '':
@@ -300,8 +278,16 @@ def correct_late_reporting(p, d):
 
 correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
 
+
 # --------------------------------------------------------------------------------
-# Warnings for catching missing data.
+# Warnings for catching missing data, etc.
+
+for r in sorted(recon.unrecognized_countries):
+    print(f"country_converter did not recognize: {r}")
+
+for r in sorted(recon.place_renames.keys()):
+    if r not in recon.used_renames:
+        print(f"Unused rename: {r}")
 
 # These are the countries we already weren't bothering to simulate.
 # By silencing them, these warnings can flag that a country got misspelt
@@ -309,41 +295,33 @@ correct_late_reporting(('China', 'Hubei', ''), datetime.date(2020, 4, 17))
 SILENCE_POPULATION_WARNINGS = set([
     ('Australia', 'External territories', ''),
     ('Australia', 'Jervis Bay Territory', ''),
-    ('France', 'Saint Pierre and Miquelon', ''),
-    ('Netherlands', 'Bonaire, Sint Eustatius and Saba', ''),
-    ('United Kingdom', 'Anguilla', ''),
-    ('United Kingdom', 'British Virgin Islands', ''),
-    ('United Kingdom', 'Falkland Islands (Islas Malvinas)', ''),
-    ('United Kingdom', 'Falkland Islands (Malvinas)', ''),
-    ('United Kingdom', 'Turks and Caicos Islands', ''),
-    ('West Bank and Gaza', '', '')])
+    ('Bonaire, Sint Eustatius and Saba', '', ''),
+    ('United States', 'Wuhan Evacuee', '')])
 
-print()
+
+if args.print_renames:
+    print('RENAMES:')
+    for src, trg in sorted(recon.place_cache.items()):
+        print(f"{src} --> {trg}")
+    print()
+
 for k, p in sorted(places.items()):
-    if not p.population is None:
+    if p.population is None and k not in SILENCE_POPULATION_WARNINGS:
         print("No Population Data: ", k)
 
 print()
 for k, p in sorted(places.items()):
-    if p.interventions is None:
+    if p.interventions is intervention_unknown:
         print("No Intervention Data: ", k)
 
 print()
-for p in sorted(interventions.keys()):
-    if p not in interventions_recorded:
-        print("Lost intervention data for: ", p)
-
-print()
-for p in sorted(population.keys()):
-    if p not in populations_recorded:
-        print("Lost population data for: ", p)
+for k in sorted(interventions.keys()):
+    if k not in interventions_recorded:
+        print("Lost intervention data for: ", k)
 
 
 # --------------------------------------------------------------------------------
 # Output Data.
-print()
-for k in sorted(places.keys()):
-    print(' --- '.join(k))
 
 with open('places.pkl', 'wb') as pickle_f:
     pickle.dump(places, pickle_f)

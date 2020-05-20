@@ -47,16 +47,18 @@ class PlaceRecon:
         self.country_cache[c] = name
         return name
 
-    def canonicalize(self, p):
-        if p in self.place_cache: return self.place_cache[p]
-        old_p = p
-        p = tuple(map(self.sanetize, p))
-        # Our models aren't about ships, so we ignore them:
+    def is_ship(self, p):
         for field in p:
             for ship_word in ['Cruise Ship', 'Princess', 'MS Zaandam']:
                 if ship_word in field:
-                    self.place_cache[old_p] = None
-                    return None
+                    return True
+        return False
+
+    def canonicalize(self, p):
+        if p in self.place_cache: return self.place_cache[p]
+        old_p = p
+
+        p = tuple(map(self.sanetize, p))
 
         # Sometimes the old country name gets duplicated.
         while p[0] and p[0] == p[1]:
@@ -69,6 +71,7 @@ class PlaceRecon:
         while p[0] and p[0] == p[1]:
             p = (p[0], p[2], '')
 
+        # If the district is a duplicate of the province, fix that too.
         if p[1] == p[2]:
             p = (p[0], p[1], '')
 
@@ -93,6 +96,4 @@ class PlaceRecon:
                 province = self.code_to_ca_province.get(a[1], a[1])
                 p = (p[0], province, a[0])
         self.place_cache[old_p] = p
-        if p[0] != 'United States' and p != old_p:
-            print(f'canonicalized\n\t{old_p} --->\n\t{p}\n')
         return p
