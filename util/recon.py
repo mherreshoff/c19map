@@ -13,8 +13,6 @@ class PlaceRecon:
             # country_converter issues warnings if you try to convert something that isn't
             # a country, but I want to use it to test for countries.
         def g(x): return csv_as_dicts(os.path.join('recon', x))
-        self.country_renames = {r["Old Country"]: r["New Country"]
-                for r in g('data_country_renames.csv')}
         self.place_renames = {}
         for r in g('data_place_renames.csv'):
             old = (r["Old Country"],r["Old Province"],r["Old District"])
