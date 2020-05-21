@@ -292,8 +292,11 @@ def consolidate_to_country_level(country):
             target.recovered += places[p].recovered
             del places[p]
 
+consolidate_to_country_level("Brazil")
+consolidate_to_country_level("Chile")
 consolidate_to_country_level("Germany")
 consolidate_to_country_level("Italy")
+consolidate_to_country_level("Mexico")
 consolidate_to_country_level("Spain")
 
 
