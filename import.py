@@ -292,12 +292,19 @@ def consolidate_to_country_level(country):
             target.recovered += places[p].recovered
             del places[p]
 
+
 consolidate_to_country_level("Brazil")
 consolidate_to_country_level("Chile")
+consolidate_to_country_level("Colombia")
 consolidate_to_country_level("Germany")
 consolidate_to_country_level("Italy")
+consolidate_to_country_level("Japan")
 consolidate_to_country_level("Mexico")
+consolidate_to_country_level("Peru")
+consolidate_to_country_level("Russia")
 consolidate_to_country_level("Spain")
+consolidate_to_country_level("Sweden")
+consolidate_to_country_level("Ukraine")
 
 
 # Fix the fact that France was recorded as French Polynesia on March 23rd:
