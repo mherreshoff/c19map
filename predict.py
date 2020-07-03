@@ -93,6 +93,13 @@ parser.add_argument("--graph_back", action='store_true')
 parser.add_argument("--graph_bottom", action='store_true')
     # Shows y-values < 1 in the graph outputs.
 
+
+parser.add_argument("--graph_linear", action='store_true')
+    # turn off log plot
+
+parser.add_argument('-i', '--graph_ignore', type=str)
+    # Variable names to ignore when graphing.
+
 graph_annontation="""\
 Note: Future values are extrapolated assuming no change to intervention status.
 Disclaimer: Accuracy of predictions may decrease with time due to compounding effects.\
@@ -220,8 +227,8 @@ class Model:
     def integrate(self, y0, ts, use_cython=True):
         if use_cython:
             return self.integrate_cython(y0, ts)
-        else: f = self.integrate_scipy
-        return f(y0, ts)
+        else:
+            return self.integrate_scipy(y0, ts)
 
     def integrate_scipy(self, y0, ts):
         soln = scipy.integrate.solve_ivp(
@@ -663,7 +670,12 @@ for k, p in sorted(places.items()):
     minor_formatter = matplotlib.dates.ConciseDateFormatter(minor_locator, show_offset=False)
     ax.xaxis.set_major_formatter(minor_formatter)
     ax.xaxis.set_minor_formatter(minor_formatter)
-    ax.set_ylabel('People (log)')
+    if args.graph_linear:
+        ax.set_ylabel('People')
+        plot_fn = ax.plot
+    else:
+        ax.set_ylabel('People (log)')
+        plot_fn = ax.semilogy
     plt.grid(True)
     graph_dates = ud.date_range_inclusive(
             p.deaths.start_date(),
@@ -679,24 +691,21 @@ for k, p in sorted(places.items()):
         ax.axvline(inv_d, 0, 1, linestyle='dashed',
                 color=inv_colors[n%len(inv_colors)],
                 label=inv_str)
-    for var, curve in zip(Model.variable_names, trajectories.T):
-        ax.semilogy(graph_dates[s:], curve[s:], label=var, zorder=1)
-    if 0:
-        for var, curve in zip(Model.variable_names, trajectories_cython.T):
-            ax.semilogy(graph_dates[s:], curve[s:], label="%"+var, linestyle='dashed', linewidth=5, zorder=2)
-        for var, curve, curve_C in zip(Model.variable_names, trajectories.T, trajectories_cython.T):
-            a = curve[len(p.deaths)-1]
-            b = curve_C[len(p.deaths)-1]
-            print(f"{var} -> off by {a/b} ({abs(a-b)})")
+    for v, var, curve in zip(Model.variables, Model.variable_names, trajectories.T):
+        if v in args.graph_ignore: continue
+        plot_fn(graph_dates[s:], curve[s:], label=var, zorder=1)
 
-    ax.semilogy(graph_dates[s:len(p.deaths)], p.deaths[s:], 's',
-            label='JHU deaths')
-    ax.semilogy(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
-            label='JHU confirmed')
+    if 'd' not in args.graph_ignore:
+        plot_fn(graph_dates[s:len(p.deaths)], p.deaths[s:], 's',
+                label='JHU deaths')
+    if 'c' not in args.graph_ignore:
+        plot_fn(graph_dates[s:len(p.deaths)], p.confirmed[s:], 's',
+                label='JHU confirmed')
     if not args.graph_bottom: plt.ylim(bottom=1)
     ymin, ymax = ax.get_ylim()
-    ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= ymax])
-    ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= ymax], minor=True)
+    if not args.graph_linear:
+        ax.yaxis.set_ticks([p for p in [10**n for n in range(12)] if p <= ymax])
+        ax.yaxis.set_ticks([p for p in [a*10**n for n in range(12) for a in range(2,10)] if p <= ymax], minor=True)
 
     x,y,w,h = ax.get_position().bounds
     ax.set_position([x, y+h*0.1, w * 0.9, h * 0.9])
